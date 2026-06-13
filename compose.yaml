@@ -1,0 +1,46 @@
+services:
+  db:
+    build:
+      context: ./db
+    ports:
+      - "3001:3001"
+    volumes:
+      - db-data:/data
+    environment:
+      - DB_PATH=/data/gastos.db
+      - PORT=3001
+      # Notificaciones por email (opcional — dejar vacío para deshabilitar)
+      # Para Gmail: SMTP_HOST=smtp.gmail.com, SMTP_PORT=587
+      # Usar una App Password de Google (no la contraseña normal)
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      target: dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - DB_URL=http://db:3001
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db-data:
