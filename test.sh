@@ -148,6 +148,8 @@ else
   echo "  ⚠  No se pudo obtener ID de gasto único creado — saltando tests CRUD de Gastos Únicos"
 fi
 
+check "GET  /api/secrets/smtp (Vault)"  GET  "$DB/api/secrets/smtp"
+
 # ─── App (BFF) ────────────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -161,6 +163,7 @@ check "GET  /api/servicios" GET  "$APP/api/servicios"
 check "GET  /api/gastos-unicos"                           GET  "$APP/api/gastos-unicos"
 check "GET  /api/usos-gasto-unico?mes=6&anio=2026"        GET  "$APP/api/usos-gasto-unico?mes=6&anio=2026"
 check "GET  /api/asignaciones?mes=6&anio=2026"            GET  "$APP/api/asignaciones?mes=6&anio=2026"
+check "GET  /api/secrets (SMTP status)"                   GET  "$APP/api/secrets"
 
 # ─── Restaurar config original ────────────────────────────────────────────────
 if [[ "$ORIG_CONFIG" != "{}" && -n "$ORIG_CONFIG" ]]; then

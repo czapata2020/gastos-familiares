@@ -1,4 +1,22 @@
 services:
+  vault:
+    build:
+      context: ./vault
+    ports:
+      - "8200:8200"
+    volumes:
+      - vault-data:/openbao/data
+      - vault-tokens:/vault-tokens
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8200/v1/sys/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    restart: unless-stopped
+
   db:
     build:
       context: ./db
@@ -6,17 +24,15 @@ services:
       - "3001:3001"
     volumes:
       - db-data:/data
+      - vault-tokens:/vault-tokens
     environment:
       - DB_PATH=/data/gastos.db
       - PORT=3001
-      # Notificaciones por email (opcional — dejar vacío para deshabilitar)
-      # Para Gmail: SMTP_HOST=smtp.gmail.com, SMTP_PORT=587
-      # Usar una App Password de Google (no la contraseña normal)
-      - SMTP_HOST=${SMTP_HOST:-}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER:-}
-      - SMTP_PASS=${SMTP_PASS:-}
-      - SMTP_FROM=${SMTP_FROM:-}
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN_FILE=/vault-tokens/app.token
+    depends_on:
+      vault:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3001/health"]
       interval: 10s
@@ -44,3 +60,5 @@ services:
 
 volumes:
   db-data:
+  vault-data:
+  vault-tokens:

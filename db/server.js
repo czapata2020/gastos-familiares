@@ -14,6 +14,43 @@ const app     = express()
 const DB_PATH = process.env.DB_PATH || '/data/gastos.db'
 const PORT    = process.env.PORT || 3001
 
+// ── Vault client ──────────────────────────────────────────────────────────────
+const VAULT_ADDR       = process.env.VAULT_ADDR       || ''
+const VAULT_TOKEN_FILE = process.env.VAULT_TOKEN_FILE || ''
+
+function getVaultToken() {
+  if (VAULT_TOKEN_FILE && fs.existsSync(VAULT_TOKEN_FILE)) {
+    return fs.readFileSync(VAULT_TOKEN_FILE, 'utf8').trim()
+  }
+  return process.env.VAULT_TOKEN || ''
+}
+
+async function vaultRead(secretPath) {
+  const token = getVaultToken()
+  if (!VAULT_ADDR || !token) return null
+  try {
+    const res = await fetch(`${VAULT_ADDR}/v1/secret/data/${secretPath}`, {
+      headers: { 'X-Vault-Token': token },
+    })
+    if (!res.ok) return null
+    const json = await res.json()
+    return json.data?.data ?? null
+  } catch { return null }
+}
+
+async function vaultWrite(secretPath, data) {
+  const token = getVaultToken()
+  if (!VAULT_ADDR || !token) return false
+  try {
+    const res = await fetch(`${VAULT_ADDR}/v1/secret/data/${secretPath}`, {
+      method: 'POST',
+      headers: { 'X-Vault-Token': token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data }),
+    })
+    return res.ok
+  } catch { return false }
+}
+
 app.use(cors())
 app.use(express.json())
 
@@ -637,24 +674,17 @@ app.delete('/api/usos-gasto-unico/:id', (req, res) => {
 const MESES_NOTIF = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
-const SMTP_HOST = process.env.SMTP_HOST || ''
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587')
-const SMTP_USER = process.env.SMTP_USER || ''
-const SMTP_PASS = process.env.SMTP_PASS || ''
-const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER
-
-let transporter = null
-if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
+async function getSmtpTransporter() {
+  const secrets = await vaultRead('smtp')
+  if (!secrets?.host || !secrets?.user || !secrets?.pass) return null
   const nodemailer = require('nodemailer')
-  transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
+  const port = parseInt(secrets.port || '587')
+  return nodemailer.createTransport({
+    host: secrets.host,
+    port,
+    secure: port === 465,
+    auth: { user: secrets.user, pass: secrets.pass },
   })
-  console.log(`[Email] SMTP configurado: ${SMTP_HOST}:${SMTP_PORT} (${SMTP_USER})`)
-} else {
-  console.log('[Email] Sin configurar — define SMTP_HOST, SMTP_USER y SMTP_PASS para habilitar notificaciones')
 }
 
 function esMesActivoNotif(s, mes) {
@@ -698,7 +728,11 @@ function emailHtml(titulo, subtitulo, filas, pie) {
 }
 
 async function enviarNotificaciones() {
+  const transporter = await getSmtpTransporter()
   if (!transporter) return
+
+  const smtpSecrets = await vaultRead('smtp')
+  const smtpFrom = smtpSecrets?.from || smtpSecrets?.user || ''
 
   const now  = new Date()
   const hoy  = now.getDate()
@@ -771,7 +805,7 @@ async function enviarNotificaciones() {
 
   if (avisos3dias.length > 0) {
     await transporter.sendMail({
-      from: `"Gastos Familiares" <${SMTP_FROM}>`,
+      from: `"Gastos Familiares" <${smtpFrom}>`,
       to: destino,
       subject: `⚠️ ${avisos3dias.length} pago${avisos3dias.length > 1 ? 's' : ''} vence${avisos3dias.length > 1 ? 'n' : ''} en 3 días — ${mesNombre} ${anio}`,
       html: emailHtml(
@@ -786,7 +820,7 @@ async function enviarNotificaciones() {
 
   if (avisosVencido.length > 0) {
     await transporter.sendMail({
-      from: `"Gastos Familiares" <${SMTP_FROM}>`,
+      from: `"Gastos Familiares" <${smtpFrom}>`,
       to: destino,
       subject: `🚨 ${avisosVencido.length} pago${avisosVencido.length > 1 ? 's' : ''} venci${avisosVencido.length > 1 ? 'eron' : 'ó'} ayer — ${mesNombre} ${anio}`,
       html: emailHtml(
@@ -812,9 +846,12 @@ app.post('/api/notificaciones/check', async (_req, res) => {
 
 // Endpoint de prueba: envía un email de ejemplo independientemente de las fechas
 app.post('/api/notificaciones/test', async (_req, res) => {
+  const transporter = await getSmtpTransporter()
   if (!transporter) {
-    return res.status(503).json({ error: 'SMTP no configurado. Define SMTP_HOST, SMTP_USER y SMTP_PASS.' })
+    return res.status(503).json({ error: 'SMTP no configurado. Configura las credenciales en Configuración → SMTP.' })
   }
+  const smtpSecrets = await vaultRead('smtp')
+  const smtpFrom = smtpSecrets?.from || smtpSecrets?.user || ''
   const cfgRows = db.prepare('SELECT clave, valor FROM config').all()
   const cfg = Object.fromEntries(cfgRows.map(r => [r.clave, r.valor]))
   const emails = [
@@ -827,7 +864,7 @@ app.post('/api/notificaciones/test', async (_req, res) => {
   try {
     const destino = emails.join(', ')
     await transporter.sendMail({
-      from: `"Gastos Familiares" <${SMTP_FROM}>`,
+      from: `"Gastos Familiares" <${smtpFrom}>`,
       to: destino,
       subject: '✅ Prueba de notificaciones — Gastos Familiares',
       html: emailHtml(
@@ -846,6 +883,40 @@ app.post('/api/notificaciones/test', async (_req, res) => {
     console.error('[Email] Error en prueba:', err.message)
     res.status(500).json({ error: err.message })
   }
+})
+
+// ─── Secrets / SMTP (via Vault) ───────────────────────────────────────────────
+
+app.get('/api/secrets/smtp', async (_req, res) => {
+  const secrets = await vaultRead('smtp')
+  if (!secrets) return res.json({ configurado: false })
+  res.json({
+    configurado: !!(secrets.host && secrets.user && secrets.pass),
+    host: secrets.host || '',
+    port: secrets.port || '587',
+    user: secrets.user || '',
+    pass: secrets.pass ? '••••••••' : '',
+    from: secrets.from || '',
+  })
+})
+
+app.put('/api/secrets/smtp', async (req, res) => {
+  const { host, port, user, pass, from } = req.body
+  if (!host || !user) {
+    return res.status(400).json({ error: 'host y user son requeridos' })
+  }
+  const existing = (await vaultRead('smtp')) || {}
+  const newSecrets = {
+    host: host.trim(),
+    port: (port || '587').toString().trim(),
+    user: user.trim(),
+    pass: pass && pass.trim() ? pass.trim() : (existing.pass || ''),
+    from: (from || '').trim() || user.trim(),
+  }
+  const ok = await vaultWrite('smtp', newSecrets)
+  if (!ok) return res.status(500).json({ error: 'No se pudo guardar en Vault' })
+  console.log(`[Vault] SMTP actualizado: ${newSecrets.host}:${newSecrets.port} (${newSecrets.user})`)
+  res.json({ ok: true })
 })
 
 // Cron: ejecutar todos los días a las 8:00 AM (hora del servidor/contenedor)

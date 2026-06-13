@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import type { Configuracion, Servicio, CategoriaServicio, GastoUnico } from '@/types'
 
-type Tab = 'general' | 'servicios' | 'unicos'
+type Tab = 'general' | 'servicios' | 'unicos' | 'smtp'
 
 interface FormServicio {
   nombre: string
@@ -99,6 +99,12 @@ export default function ConfiguracionPage() {
   const [editandoUnicoId, setEditandoUnicoId] = useState<string | null>(null)
   const [guardandoUnico, setGuardandoUnico]   = useState(false)
   const [formUnico, setFormUnico] = useState({ nombre: '', categoria: 'otro' as CategoriaServicio, montoRef: '', comentario: '' })
+  const [smtpForm, setSmtpForm] = useState({ host: '', port: '587', user: '', pass: '', from: '' })
+  const [smtpConfigurado, setSmtpConfigurado] = useState(false)
+  const [cargandoSmtp, setCargandoSmtp] = useState(false)
+  const [guardandoSmtp, setGuardandoSmtp] = useState(false)
+  const [smtpMensaje, setSmtpMensaje] = useState('')
+
   const [mostrandoForm, setMostrandoForm] = useState(false)
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [guardandoServ, setGuardandoServ] = useState(false)
@@ -110,6 +116,7 @@ export default function ConfiguracionPage() {
   useEffect(() => {
     if (tab === 'servicios') cargarServicios()
     if (tab === 'unicos')    cargarUnicos()
+    if (tab === 'smtp')      cargarSmtp()
   }, [tab])
 
   // ── Config ────────────────────────────────────────────────────
@@ -149,6 +156,48 @@ export default function ConfiguracionPage() {
     } catch {
       setResultadoEmail('✗ No se pudo conectar con el servidor')
     } finally { setProbandoEmail(false) }
+  }
+
+  // ── SMTP (Vault) ──────────────────────────────────────────────
+  async function cargarSmtp() {
+    setCargandoSmtp(true)
+    try {
+      const res = await fetch('/api/secrets')
+      if (res.ok) {
+        const data = await res.json()
+        setSmtpConfigurado(data.configurado ?? false)
+        setSmtpForm({
+          host: data.host || '',
+          port: data.port || '587',
+          user: data.user || '',
+          pass: '',
+          from: data.from || '',
+        })
+      }
+    } finally { setCargandoSmtp(false) }
+  }
+
+  async function guardarSmtp(e: React.FormEvent) {
+    e.preventDefault()
+    setGuardandoSmtp(true)
+    setSmtpMensaje('')
+    try {
+      const res = await fetch('/api/secrets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(smtpForm),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setSmtpMensaje('✓ Credenciales guardadas en Vault')
+        setSmtpConfigurado(true)
+        setSmtpForm(f => ({ ...f, pass: '' }))
+      } else {
+        setSmtpMensaje(`✗ ${json.error}`)
+      }
+    } catch {
+      setSmtpMensaje('✗ No se pudo conectar con el servidor')
+    } finally { setGuardandoSmtp(false) }
   }
 
   // ── Servicios ─────────────────────────────────────────────────
@@ -302,6 +351,7 @@ export default function ConfiguracionPage() {
           { id: 'general',   label: '⚙ General' },
           { id: 'servicios', label: '🔌 Servicios' },
           { id: 'unicos',    label: '💰 Únicos' },
+          { id: 'smtp',      label: '✉ SMTP' },
         ] as { id: Tab; label: string }[]).map(({ id, label }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
@@ -907,6 +957,92 @@ export default function ConfiguracionPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ════ TAB SMTP ═══════════════════════════════════════════ */}
+      {tab === 'smtp' && (
+        <section className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <h2 className="text-base font-semibold text-gray-900">Credenciales SMTP</h2>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${smtpConfigurado ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+              {smtpConfigurado ? 'Configurado' : 'Sin configurar'}
+            </span>
+          </div>
+          <p className="text-sm text-gray-500 mb-5">
+            Las credenciales se almacenan en OpenBao (Vault) y nunca en variables de entorno ni en disco.
+          </p>
+          {cargandoSmtp ? (
+            <p className="text-sm text-gray-400">Cargando...</p>
+          ) : (
+            <form onSubmit={guardarSmtp} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Host SMTP</label>
+                  <input type="text" value={smtpForm.host} placeholder="smtp.gmail.com"
+                    onChange={e => setSmtpForm({ ...smtpForm, host: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Puerto</label>
+                  <input type="number" value={smtpForm.port} placeholder="587"
+                    onChange={e => setSmtpForm({ ...smtpForm, port: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Usuario (email remitente)</label>
+                <input type="email" value={smtpForm.user} placeholder="tucorreo@gmail.com"
+                  onChange={e => setSmtpForm({ ...smtpForm, user: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Contraseña / App Password
+                  {smtpConfigurado && <span className="ml-2 text-gray-400 font-normal">(dejar vacío para conservar la actual)</span>}
+                </label>
+                <input type="password" value={smtpForm.pass}
+                  placeholder={smtpConfigurado ? '••••••••' : 'App Password de Gmail'}
+                  onChange={e => setSmtpForm({ ...smtpForm, pass: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Nombre remitente <span className="text-gray-400 font-normal">(opcional — usa el usuario si se omite)</span>
+                </label>
+                <input type="email" value={smtpForm.from} placeholder="tucorreo@gmail.com"
+                  onChange={e => setSmtpForm({ ...smtpForm, from: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <button type="submit" disabled={guardandoSmtp}
+                  className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-60">
+                  {guardandoSmtp ? 'Guardando...' : 'Guardar en Vault'}
+                </button>
+                {smtpMensaje && (
+                  <span className={`text-sm ${smtpMensaje.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                    {smtpMensaje}
+                  </span>
+                )}
+              </div>
+            </form>
+          )}
+
+          {smtpConfigurado && (
+            <div className="mt-6 pt-5 border-t border-gray-100">
+              <p className="text-xs text-gray-500 mb-3">Envía un email de prueba para verificar que la configuración es correcta.</p>
+              <button onClick={probarNotificacion} disabled={probandoEmail}
+                className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-60">
+                {probandoEmail ? 'Enviando...' : 'Enviar email de prueba'}
+              </button>
+              {resultadoEmail && (
+                <p className={`mt-2 text-sm ${resultadoEmail.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                  {resultadoEmail}
+                </p>
+              )}
+            </div>
+          )}
+        </section>
       )}
     </div>
   )
