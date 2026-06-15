@@ -76,6 +76,7 @@ services:
       - WAHA_BASE_URL=http://waha:3000
       - WAHA_SESSION=${WAHA_SESSION:-default}
       - DB_BFF_URL=http://app:3000
+      - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE:-false}
     restart: unless-stopped
 
   waha:
