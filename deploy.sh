@@ -80,12 +80,20 @@ for i in $(seq 1 10); do
   curl -sf http://localhost:3000 &>/dev/null && { echo "  App lista."; break; }
   sleep 3
 done
+echo "  n8n (hasta 60s)..."
+for i in $(seq 1 20); do
+  curl -sf http://localhost:5678/healthz &>/dev/null && { echo "  n8n listo."; break; }
+  [ "$i" -eq 20 ] && { echo "  ✗ n8n no respondió. Logs: $COMPOSE -f $COMPOSE_FILE logs n8n"; }
+  sleep 3
+done
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  App   → http://localhost:3000"
 echo "  API   → http://localhost:3001"
 echo "  Vault → http://localhost:8200"
+echo "  n8n   → http://localhost:5678"
+echo "  WAHA  → http://localhost:3010"
 echo "  Docs  → http://localhost:3001/api-docs"
 echo "  Limpieza ocasional de imágenes viejas:  podman image prune"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
