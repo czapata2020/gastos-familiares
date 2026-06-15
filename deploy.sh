@@ -13,7 +13,7 @@ cd "$(dirname "$0")"
 #   Rollback: ./deploy.sh <tag-anterior>   (la imagen vieja sigue en disco)
 # ─────────────────────────────────────────────────────────────────────────────
 
-OWNER="TU_USUARIO"                 # <-- tu usuario/org de GitHub, en minúsculas
+OWNER="czapata2020"                 # <-- tu usuario/org de GitHub, en minúsculas
 COMPOSE_FILE="compose.prod.yaml"
 export TAG="${1:-latest}"
 

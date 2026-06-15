@@ -1,12 +1,12 @@
 # compose.prod.yaml
 #
 # Producción: NO construye nada. Referencia las imágenes ya publicadas en GHCR.
-# Reemplaza TU_USUARIO por tu usuario u organización de GitHub (en minúsculas).
+# Reemplaza czapata2020 por tu usuario u organización de GitHub (en minúsculas).
 # El tag se elige al desplegar:  TAG=sha-a1b2c3d  o  TAG=v1.4.2  (default: latest)
 
 services:
   vault:
-    image: ghcr.io/TU_USUARIO/gastos-familiares-vault:${TAG:-latest}
+    image: ghcr.io/czapata2020/gastos-familiares-vault:${TAG:-latest}
     ports:
       - "8200:8200"
     volumes:
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
 
   db:
-    image: ghcr.io/TU_USUARIO/gastos-familiares-db:${TAG:-latest}
+    image: ghcr.io/czapata2020/gastos-familiares-db:${TAG:-latest}
     ports:
       - "3001:3001"
     volumes:
@@ -46,7 +46,7 @@ services:
     restart: unless-stopped
 
   app:
-    image: ghcr.io/TU_USUARIO/gastos-familiares-app:${TAG:-latest}
+    image: ghcr.io/czapata2020/gastos-familiares-app:${TAG:-latest}
     ports:
       - "3000:3000"
     environment:
