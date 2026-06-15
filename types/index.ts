@@ -4,6 +4,7 @@ export interface Persona {
   moneda: string
   email?: string
   notificaciones?: boolean
+  foto?: string     // base64 data URL, redimensionada a 200×200
 }
 
 export interface Configuracion {

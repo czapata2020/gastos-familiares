@@ -271,6 +271,17 @@ function FilaUnicoRow({ f, moneda, n1, n2, onUpdate, onDelete }: FilaUnicoRowPro
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+function PersonaAvatar({ foto, nombre }: { foto?: string; nombre: string }) {
+  if (foto) {
+    return <img src={foto} alt={nombre} className="w-6 h-6 rounded-full object-cover opacity-90 flex-shrink-0" />
+  }
+  return (
+    <span className="w-6 h-6 rounded-full bg-white/70 border border-current flex items-center justify-center text-[10px] font-semibold opacity-60 flex-shrink-0">
+      {(nombre || '?')[0].toUpperCase()}
+    </span>
+  )
+}
+
 export default function DashboardPage() {
   const now = new Date()
   const [mes, setMes]   = useState(now.getMonth() + 1)
@@ -496,12 +507,18 @@ export default function DashboardPage() {
           {/* ── Tarjetas resumen ───────────────────────────────── */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="bg-brand-50 border border-brand-200 rounded-xl p-4">
-              <p className="text-xs font-medium text-brand-600 mb-1">{n1}</p>
+              <div className="flex items-center gap-2 mb-1">
+                <PersonaAvatar foto={config.persona1.foto} nombre={n1} />
+                <p className="text-xs font-medium text-brand-600">{n1}</p>
+              </div>
               <p className="text-2xl font-bold text-brand-800">{fmt(total1, config.moneda)}</p>
               <p className="text-xs text-brand-500 mt-1">{porcentaje1.toFixed(1)}% del total</p>
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <p className="text-xs font-medium text-blue-600 mb-1">{n2}</p>
+              <div className="flex items-center gap-2 mb-1">
+                <PersonaAvatar foto={config.persona2.foto} nombre={n2} />
+                <p className="text-xs font-medium text-blue-600">{n2}</p>
+              </div>
               <p className="text-2xl font-bold text-blue-800">{fmt(total2, config.moneda)}</p>
               <p className="text-xs text-blue-500 mt-1">{porcentaje2.toFixed(1)}% del total</p>
             </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Configuracion, Servicio, CategoriaServicio, GastoUnico } from '@/types'
 
 type Tab = 'general' | 'servicios' | 'unicos' | 'smtp'
@@ -69,6 +69,79 @@ function BtnHelper({ onClick }: { onClick: () => void }) {
       className="w-4 h-4 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold hover:bg-gray-300 flex items-center justify-center flex-shrink-0">
       ?
     </button>
+  )
+}
+
+async function resizarFoto(file: File, size = 200): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')!
+      const min = Math.min(img.width, img.height)
+      const sx = (img.width - min) / 2
+      const sy = (img.height - min) / 2
+      ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL('image/jpeg', 0.82))
+    }
+    img.src = url
+  })
+}
+
+function AvatarUpload({ foto, nombre, onChange }: {
+  foto?: string
+  nombre: string
+  onChange: (foto: string | undefined) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const inicial = (nombre || '?')[0].toUpperCase()
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    onChange(await resizarFoto(file))
+    e.target.value = ''
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        title="Cambiar foto"
+        className="relative w-16 h-16 rounded-full overflow-hidden group border-2 border-gray-200 hover:border-brand-400 transition-colors"
+      >
+        {foto ? (
+          <img src={foto} alt={nombre} className="w-full h-full object-cover" />
+        ) : (
+          <span className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400 text-xl font-semibold">
+            {inicial}
+          </span>
+        )}
+        <span className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round"
+              d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+            <path strokeLinecap="round" strokeLinejoin="round"
+              d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
+          </svg>
+        </span>
+      </button>
+      {foto && (
+        <button
+          type="button"
+          onClick={() => onChange(undefined)}
+          className="text-[10px] text-gray-400 hover:text-red-400 transition-colors"
+        >
+          quitar foto
+        </button>
+      )}
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+    </div>
   )
 }
 
@@ -376,7 +449,14 @@ export default function ConfiguracionPage() {
               <div className="grid grid-cols-2 gap-4">
                 {/* Persona 1 */}
                 <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-gray-700">Persona 1</h3>
+                  <div className="flex items-center gap-3">
+                    <AvatarUpload
+                      foto={config.persona1.foto}
+                      nombre={config.persona1.nombre}
+                      onChange={foto => setConfig({ ...config, persona1: { ...config.persona1, foto } })}
+                    />
+                    <h3 className="text-sm font-medium text-gray-700">Persona 1</h3>
+                  </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Nombre</label>
                     <input type="text" value={config.persona1.nombre} placeholder="Tu nombre"
@@ -422,7 +502,14 @@ export default function ConfiguracionPage() {
 
                 {/* Persona 2 */}
                 <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-gray-700">Persona 2</h3>
+                  <div className="flex items-center gap-3">
+                    <AvatarUpload
+                      foto={config.persona2.foto}
+                      nombre={config.persona2.nombre}
+                      onChange={foto => setConfig({ ...config, persona2: { ...config.persona2, foto } })}
+                    />
+                    <h3 className="text-sm font-medium text-gray-700">Persona 2</h3>
+                  </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Nombre</label>
                     <input type="text" value={config.persona2.nombre} placeholder="Nombre de tu pareja"
