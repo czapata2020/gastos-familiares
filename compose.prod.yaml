@@ -57,7 +57,7 @@ services:
     restart: unless-stopped
 
   n8n:
-    image: n8nio/n8n:latest
+    image: docker.io/n8nio/n8n:latest
     ports:
       - "5678:5678"
     volumes:
@@ -79,7 +79,7 @@ services:
     restart: unless-stopped
 
   waha:
-    image: devlikeapro/waha:latest
+    image: docker.io/devlikeapro/waha:latest
     ports:
       - "3010:3000"
     volumes:
