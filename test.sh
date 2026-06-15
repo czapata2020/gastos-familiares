@@ -10,6 +10,7 @@ CREATED_GT_ID=""
 CREATED_ASIG_ID=""
 CREATED_UNICO_ID=""
 CREATED_USO_ID=""
+CREATED_REC_ID=""
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
 check() {
@@ -150,6 +151,30 @@ fi
 
 check "GET  /api/secrets/smtp (Vault)"  GET  "$DB/api/secrets/smtp"
 
+# ─── Recibos ──────────────────────────────────────────────────────────────────
+# Imagen mínima válida (JPEG 1×1 blanco) en base64
+JPEG_1X1="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAAR\
+CAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AJQAB/9k="
+
+CREATED_REC_ID=""
+body=$(check_and_capture \
+  "POST /api/recibos" POST "$DB/api/recibos" \
+  "{\"message_id\":\"msg-test-$$\",\"remitente\":\"test@c.us\",\"tipo_detectado\":\"Luz Test\",\"monto\":99.50,\"fecha\":\"2026-06-15\",\"confianza\":0.9,\"imagen_base64\":\"$JPEG_1X1\"}")
+CREATED_REC_ID=$(extract_id "$body")
+
+if [[ -n "$CREATED_REC_ID" ]]; then
+  check "GET  /api/recibos?estado=pendiente"  GET    "$DB/api/recibos?estado=pendiente"
+  check "GET  /api/recibos/:id/imagen"        GET    "$DB/api/recibos/$CREATED_REC_ID/imagen"
+
+  # Idempotencia: el mismo message_id no debe insertar duplicado
+  check "POST /api/recibos (idempotente)"     POST   "$DB/api/recibos" \
+    "{\"message_id\":\"msg-test-$$\",\"remitente\":\"test@c.us\",\"tipo_detectado\":\"Luz Test\",\"monto\":99.50}"
+
+  check "PATCH /api/recibos/:id/rechazar"     PATCH  "$DB/api/recibos/$CREATED_REC_ID/rechazar"
+else
+  echo "  ⚠  No se pudo obtener ID de recibo — saltando tests de Recibos"
+fi
+
 # ─── App (BFF) ────────────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -164,6 +189,7 @@ check "GET  /api/gastos-unicos"                           GET  "$APP/api/gastos-
 check "GET  /api/usos-gasto-unico?mes=6&anio=2026"        GET  "$APP/api/usos-gasto-unico?mes=6&anio=2026"
 check "GET  /api/asignaciones?mes=6&anio=2026"            GET  "$APP/api/asignaciones?mes=6&anio=2026"
 check "GET  /api/secrets (SMTP status)"                   GET  "$APP/api/secrets"
+check "GET  /api/recibos?estado=pendiente"                GET  "$APP/api/recibos?estado=pendiente"
 
 # ─── Restaurar config original ────────────────────────────────────────────────
 if [[ "$ORIG_CONFIG" != "{}" && -n "$ORIG_CONFIG" ]]; then

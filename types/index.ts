@@ -101,6 +101,26 @@ export interface UsoGastoUnico {
   fechaPago: string | null
 }
 
+export type EstadoRecibo = 'pendiente' | 'confirmado' | 'rechazado'
+export type MatchTipoRecibo = 'asignacion' | 'gasto_unico' | 'ninguno'
+
+export interface Recibo {
+  id: string
+  messageId: string | null
+  remitente: string | null
+  asignadoA: '1' | '2' | 'ambos' | null
+  tipoDetectado: string | null
+  monto: number | null
+  fecha: string | null
+  imagenPath: string | null
+  estado: EstadoRecibo
+  matchTipo: MatchTipoRecibo | null
+  matchId: string | null
+  confianza: number | null
+  rawJson: Record<string, unknown> | null
+  creadoEn: string
+}
+
 export interface ResumenMes {
   mes: number
   año: number

@@ -9,6 +9,7 @@ import {
   ScrollText,
   Settings2,
   Wallet,
+  ScanLine,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -18,6 +19,7 @@ const NAV = [
   { href: '/transversales', label: 'Gastos fijos',   icon: Repeat2         },
   { href: '/servicios',     label: 'Servicios',      icon: Zap             },
   { href: '/historial',     label: 'Historial',      icon: ScrollText      },
+  { href: '/recibos',       label: 'Recibos',        icon: ScanLine        },
   { href: '/configuracion', label: 'Configuración',  icon: Settings2       },
 ]
 

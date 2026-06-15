@@ -58,9 +58,44 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://localhost:5678}
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-false}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - MODEL_NAME=${MODEL_NAME:-gpt-4o}
+      - WAHA_BASE_URL=http://waha:3000
+      - WAHA_SESSION=${WAHA_SESSION:-default}
+      - DB_BFF_URL=http://app:3000
+    restart: unless-stopped
+
+  waha:
+    image: devlikeapro/waha:latest
+    ports:
+      - "3010:3000"
+    volumes:
+      - waha_data:/app/.sessions
+    environment:
+      - WHATSAPP_DEFAULT_ENGINE=${WAHA_ENGINE:-WEBJS}
+      - WAHA_DASHBOARD_ENABLED=true
+    restart: unless-stopped
+
 volumes:
   db-data:
   vault-data:
   vault-tokens:
   app_node_modules:
   app_next:
+  n8n_data:
+  waha_data:

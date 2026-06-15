@@ -91,6 +91,7 @@ const swaggerSpec = swaggerJsdoc({
       { name: 'Servicios',  description: 'Servicios del hogar (luz, agua, etc.)' },
       { name: 'Transversales', description: 'Gastos compartidos recurrentes' },
       { name: 'Asignaciones',  description: 'Asignaciones mensuales de servicios' },
+      { name: 'Recibos',       description: 'Ingesta y revisión de recibos desde WhatsApp' },
     ],
   },
   apis: [__filename],
@@ -916,6 +917,243 @@ app.put('/api/secrets/smtp', async (req, res) => {
   const ok = await vaultWrite('smtp', newSecrets)
   if (!ok) return res.status(500).json({ error: 'No se pudo guardar en Vault' })
   console.log(`[Vault] SMTP actualizado: ${newSecrets.host}:${newSecrets.port} (${newSecrets.user})`)
+  res.json({ ok: true })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RECIBOS (ingesta desde WhatsApp)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function rowToRecibo(r) {
+  return {
+    id: r.id, messageId: r.message_id, remitente: r.remitente,
+    asignadoA: r.asignado_a, tipoDetectado: r.tipo_detectado,
+    monto: r.monto, fecha: r.fecha, imagenPath: r.imagen_path,
+    estado: r.estado, matchTipo: r.match_tipo, matchId: r.match_id,
+    confianza: r.confianza,
+    rawJson: r.raw_json ? (() => { try { return JSON.parse(r.raw_json) } catch { return r.raw_json } })() : null,
+    creadoEn: r.creado_en,
+  }
+}
+
+function resolverPersona(remitente) {
+  const rows = db.prepare(
+    "SELECT clave, valor FROM config WHERE clave IN ('whatsapp_jid_1','whatsapp_jid_2')"
+  ).all()
+  const m = Object.fromEntries(rows.map(r => [r.clave, r.valor]))
+  if (m.whatsapp_jid_1 && m.whatsapp_jid_1 === remitente) return '1'
+  if (m.whatsapp_jid_2 && m.whatsapp_jid_2 === remitente) return '2'
+  return 'ambos'
+}
+
+function reconciliar(tipoDetectado, fecha) {
+  if (!tipoDetectado || !fecha) return { matchTipo: 'ninguno', matchId: null }
+  const d = new Date(fecha)
+  if (isNaN(d)) return { matchTipo: 'ninguno', matchId: null }
+  const mes  = d.getMonth() + 1
+  const anio = d.getFullYear()
+  const termino = `%${tipoDetectado}%`
+
+  const asig = db.prepare(
+    "SELECT id FROM asignaciones_mes WHERE mes=? AND año=? AND LOWER(servicio_nombre) LIKE LOWER(?)"
+  ).get(mes, anio, termino)
+  if (asig) return { matchTipo: 'asignacion', matchId: asig.id }
+
+  const uso = db.prepare(
+    "SELECT id FROM usos_gasto_unico WHERE mes=? AND año=? AND LOWER(gasto_nombre) LIKE LOWER(?)"
+  ).get(mes, anio, termino)
+  if (uso) return { matchTipo: 'gasto_unico', matchId: uso.id }
+
+  return { matchTipo: 'ninguno', matchId: null }
+}
+
+function guardarImagen(id, imagenBase64) {
+  if (!imagenBase64) return null
+  let ext = 'jpg'
+  let raw = imagenBase64
+  const dataUrl = imagenBase64.match(/^data:image\/([a-zA-Z]+);base64,(.+)/)
+  if (dataUrl) {
+    ext = dataUrl[1] === 'jpeg' ? 'jpg' : dataUrl[1]
+    raw = dataUrl[2]
+  }
+  const dir = '/data/recibos'
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  const filepath = path.join(dir, `${id}.${ext}`)
+  fs.writeFileSync(filepath, Buffer.from(raw, 'base64'))
+  return filepath
+}
+
+/**
+ * @openapi
+ * /api/recibos:
+ *   post:
+ *     tags: [Recibos]
+ *     summary: Registra un recibo detectado desde WhatsApp
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               message_id:     { type: string }
+ *               remitente:      { type: string }
+ *               tipo_detectado: { type: string }
+ *               monto:          { type: number }
+ *               fecha:          { type: string }
+ *               confianza:      { type: number }
+ *               raw_json:       { type: object }
+ *               imagen_base64:  { type: string }
+ *     responses:
+ *       201: { description: Recibo creado }
+ *       200: { description: Recibo ya existente (idempotente) }
+ */
+app.post('/api/recibos', (req, res) => {
+  const { message_id, remitente, tipo_detectado, monto, fecha, confianza, raw_json, imagen_base64 } = req.body
+
+  // Idempotencia por message_id
+  if (message_id) {
+    const existente = db.prepare('SELECT id FROM recibos WHERE message_id = ?').get(message_id)
+    if (existente) return res.json({ ok: true, id: existente.id, duplicado: true })
+  }
+
+  const id          = `rec-${uid()}`
+  const asignado_a  = resolverPersona(remitente)
+  const { matchTipo, matchId } = reconciliar(tipo_detectado, fecha)
+  const imagen_path = guardarImagen(id, imagen_base64 || null)
+
+  db.prepare(`
+    INSERT INTO recibos (id, message_id, remitente, asignado_a, tipo_detectado, monto, fecha,
+                         imagen_path, estado, match_tipo, match_id, confianza, raw_json)
+    VALUES (?,?,?,?,?,?,?,?,'pendiente',?,?,?,?)
+  `).run(
+    id, message_id ?? null, remitente ?? null, asignado_a,
+    tipo_detectado ?? null, monto ?? null, fecha ?? null,
+    imagen_path, matchTipo, matchId ?? null,
+    confianza ?? null, raw_json ? JSON.stringify(raw_json) : null
+  )
+
+  res.status(201).json({ ok: true, id })
+})
+
+/**
+ * @openapi
+ * /api/recibos:
+ *   get:
+ *     tags: [Recibos]
+ *     summary: Lista recibos, opcionalmente filtrados por estado
+ *     parameters:
+ *       - in: query
+ *         name: estado
+ *         schema: { type: string, enum: [pendiente, confirmado, rechazado] }
+ *     responses:
+ *       200: { description: Array de recibos }
+ */
+app.get('/api/recibos', (req, res) => {
+  const { estado } = req.query
+  const rows = estado
+    ? db.prepare('SELECT * FROM recibos WHERE estado = ? ORDER BY creado_en DESC').all(estado)
+    : db.prepare('SELECT * FROM recibos ORDER BY creado_en DESC').all()
+  res.json(rows.map(rowToRecibo))
+})
+
+/**
+ * @openapi
+ * /api/recibos/{id}/imagen:
+ *   get:
+ *     tags: [Recibos]
+ *     summary: Devuelve la imagen de un recibo
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Imagen del recibo }
+ *       404: { description: No encontrado }
+ */
+app.get('/api/recibos/:id/imagen', (req, res) => {
+  const row = db.prepare('SELECT imagen_path FROM recibos WHERE id = ?').get(req.params.id)
+  if (!row || !row.imagen_path || !fs.existsSync(row.imagen_path)) {
+    return res.status(404).json({ error: 'Imagen no encontrada' })
+  }
+  const ext = path.extname(row.imagen_path).slice(1) || 'jpg'
+  const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
+  res.setHeader('Content-Type', mime)
+  res.sendFile(row.imagen_path)
+})
+
+/**
+ * @openapi
+ * /api/recibos/{id}/confirmar:
+ *   patch:
+ *     tags: [Recibos]
+ *     summary: Confirma un recibo y aplica el efecto contable
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               match_id:   { type: string }
+ *               match_tipo: { type: string }
+ *               monto:      { type: number }
+ *               asignado_a: { type: string }
+ *     responses:
+ *       200: { description: Recibo confirmado }
+ *       404: { description: No encontrado }
+ */
+app.patch('/api/recibos/:id/confirmar', (req, res) => {
+  const recibo = db.prepare('SELECT * FROM recibos WHERE id = ?').get(req.params.id)
+  if (!recibo) return res.status(404).json({ error: 'No encontrado' })
+  if (recibo.estado === 'confirmado') return res.json({ ok: true, yaConfirmado: true })
+
+  const matchTipo = req.body.match_tipo ?? recibo.match_tipo
+  const matchId   = req.body.match_id   ?? recibo.match_id
+  const monto     = req.body.monto      ?? recibo.monto
+  const asignadoA = req.body.asignado_a ?? recibo.asignado_a
+  const fechaPago = recibo.fecha ?? new Date().toISOString().slice(0, 10)
+
+  if (matchTipo === 'asignacion' && matchId) {
+    db.prepare(
+      'UPDATE asignaciones_mes SET pagado=1, fecha_pago=?, monto=COALESCE(?,monto), asignado_a=COALESCE(?,asignado_a) WHERE id=?'
+    ).run(fechaPago, monto ?? null, asignadoA ?? null, matchId)
+  } else if (matchTipo === 'gasto_unico' && matchId) {
+    db.prepare(
+      'UPDATE usos_gasto_unico SET pagado=1, fecha_pago=?, monto=COALESCE(?,monto), asignado_a=COALESCE(?,asignado_a) WHERE id=?'
+    ).run(fechaPago, monto ?? null, asignadoA ?? null, matchId)
+  }
+
+  db.prepare(
+    'UPDATE recibos SET estado=?,match_tipo=?,match_id=? WHERE id=?'
+  ).run('confirmado', matchTipo, matchId ?? null, req.params.id)
+
+  res.json({ ok: true })
+})
+
+/**
+ * @openapi
+ * /api/recibos/{id}/rechazar:
+ *   patch:
+ *     tags: [Recibos]
+ *     summary: Rechaza un recibo sin efecto contable
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Recibo rechazado }
+ *       404: { description: No encontrado }
+ */
+app.patch('/api/recibos/:id/rechazar', (req, res) => {
+  const result = db.prepare("UPDATE recibos SET estado='rechazado' WHERE id=?").run(req.params.id)
+  if (result.changes === 0) return res.status(404).json({ error: 'No encontrado' })
   res.json({ ok: true })
 })
 

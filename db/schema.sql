@@ -79,3 +79,20 @@ CREATE TABLE IF NOT EXISTS asignaciones_mes (
   fecha_pago      TEXT,
   creado_en       TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS recibos (
+  id             TEXT PRIMARY KEY,
+  message_id     TEXT UNIQUE,
+  remitente      TEXT,
+  asignado_a     TEXT,
+  tipo_detectado TEXT,
+  monto          REAL,
+  fecha          TEXT,
+  imagen_path    TEXT,
+  estado         TEXT NOT NULL DEFAULT 'pendiente',
+  match_tipo     TEXT,
+  match_id       TEXT,
+  confianza      REAL,
+  raw_json       TEXT,
+  creado_en      TEXT NOT NULL DEFAULT (datetime('now'))
+);
