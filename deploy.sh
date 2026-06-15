@@ -1,130 +1,85 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-# Ejecutar siempre desde el directorio del script, sin importar desde dónde se llame
 cd "$(dirname "$0")"
 
-IMAGE_APP="localhost/gastos-familiares_app:latest"
-IMAGE_DB="localhost/gastos-familiares_db:latest"
-IMAGE_VAULT="localhost/gastos-familiares_vault:latest"
-PROJECT="gastos-familiares"
+# ─────────────────────────────────────────────────────────────────────────────
+# Despliegue de PRODUCCIÓN — solo descarga imágenes de GHCR y las levanta.
+# No construye, no borra imágenes, no toca volúmenes de datos.
+#
+#   Uso:   ./deploy.sh                 -> despliega el tag 'latest'
+#          ./deploy.sh sha-a1b2c3d     -> despliega una versión concreta (recomendado)
+#          ./deploy.sh v1.4.2          -> despliega un tag de versión
+#
+#   Rollback: ./deploy.sh <tag-anterior>   (la imagen vieja sigue en disco)
+# ─────────────────────────────────────────────────────────────────────────────
+
+OWNER="TU_USUARIO"                 # <-- tu usuario/org de GitHub, en minúsculas
+COMPOSE_FILE="compose.prod.yaml"
+export TAG="${1:-latest}"
+
 OS="$(uname -s)"
 
-
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Despliegue: Gastos Familiares "
+echo "  Despliegue: Gastos Familiares — tag: $TAG"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# 1. Verificar Podman y seleccionar el comando compose
+# 1. Podman + selección del comando compose ----------------------------------
 echo ""
-echo "[1/6] Verificando Podman..."
+echo "[1/4] Verificando Podman..."
 if ! podman info &>/dev/null; then
   if [ "$OS" = "Darwin" ]; then
-    echo "  Iniciando máquina virtual..."
     podman machine start
   else
-    echo "  ✗ Podman no responde. Instálalo con: sudo apt install podman (Debian/Ubuntu)"
+    echo "  ✗ Podman no responde."
     exit 1
   fi
 fi
+[ "$OS" != "Darwin" ] && systemctl --user start podman.socket 2>/dev/null || true
 
-# En Linux, activar el socket de Podman para compatibilidad con docker-compose
-if [ "$OS" != "Darwin" ]; then
-  systemctl --user start podman.socket 2>/dev/null || true
-fi
-
-# Seleccionar el comando compose:
-#   1) podman-compose (Python) — directo, sin depender del socket
-#   2) podman compose   — nativo si no delega a docker-compose externo
-#   3) docker-compose   — vía socket de Podman como fallback
 if command -v podman-compose &>/dev/null; then
   COMPOSE="podman-compose"
-  echo "  Usando: podman-compose"
 else
   COMPOSE="podman compose"
-  echo "  Usando: podman compose"
-  # Si podman compose delega a docker-compose, apuntarlo al socket de Podman
   PODMAN_SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
-  if [ -S "$PODMAN_SOCK" ]; then
-    export DOCKER_HOST="unix://$PODMAN_SOCK"
-  fi
+  [ -S "$PODMAN_SOCK" ] && export DOCKER_HOST="unix://$PODMAN_SOCK"
 fi
-echo "  OK"
+echo "  Usando: $COMPOSE"
 
-# 2. Detener y eliminar contenedores
-echo ""
-echo "[2/6] Deteniendo contenedores..."
-$COMPOSE down 2>/dev/null || true
-echo "  OK"
-
-# 3. Eliminar imágenes anteriores
-echo ""
-echo "[3/6] Eliminando imágenes anteriores..."
-podman rmi "$IMAGE_APP"   2>/dev/null && echo "  app eliminada."   || echo "  app: no existía."
-podman rmi "$IMAGE_DB"    2>/dev/null && echo "  db eliminada."    || echo "  db: no existía."
-podman rmi "$IMAGE_VAULT" 2>/dev/null && echo "  vault eliminada." || echo "  vault: no existía."
-
-# 4. Limpiar huérfanas
-echo ""
-echo "[4/6] Limpiando imágenes huérfanas..."
-podman image prune -f
-echo "  OK"
-
-# Verificación
-echo ""
-echo "── Verificación ─────────────────────"
-CONTAINERS=$(podman ps -a --format "{{.Names}}" 2>/dev/null | grep "$PROJECT" || true)
-IMAGES=$(podman images --format "{{.Repository}}:{{.Tag}}" 2>/dev/null | grep "$PROJECT" || true)
-if [ -z "$CONTAINERS" ] && [ -z "$IMAGES" ]; then
-  echo "  Limpio — sin contenedores ni imágenes del proyecto."
-else
-  [ -n "$CONTAINERS" ] && echo "  AVISO — contenedores: $CONTAINERS"
-  [ -n "$IMAGES" ]     && echo "  AVISO — imágenes:     $IMAGES"
-fi
-
-# 5. Build y arranque
-echo ""
-echo "[5/6] Construyendo y desplegando..."
-$COMPOSE up --build -d
-
-# Extraer package-lock.json si aún no existe localmente
-if [ ! -f package-lock.json ]; then
+# 2. Login a GHCR (solo si el paquete es privado) ----------------------------
+# Guarda un token con permiso read:packages en la variable GHCR_TOKEN del entorno.
+# Si los paquetes son públicos, puedes borrar este bloque.
+if [ -n "${GHCR_TOKEN:-}" ]; then
   echo ""
-  echo "  Extrayendo package-lock.json de la imagen app..."
-  TEMP=$(podman create "$IMAGE_APP")
-  podman cp "$TEMP:/app/package-lock.json" . 2>/dev/null && \
-    echo "  Guardado. Comitéalo en git para builds más rápidos." || true
-  podman rm "$TEMP" &>/dev/null || true
+  echo "[2/4] Login en GHCR..."
+  echo "$GHCR_TOKEN" | podman login ghcr.io -u "$OWNER" --password-stdin
+  echo "  OK"
+else
+  echo ""
+  echo "[2/4] Sin GHCR_TOKEN — asumiendo paquetes públicos."
 fi
 
-# 6. Esperar servicios y ejecutar tests
+# 3. Descargar SOLO el delta y levantar --------------------------------------
 echo ""
-echo "[6/6] Esperando servicios y ejecutando tests..."
-echo "  Esperando DB (hasta 60s)..."
+echo "[3/4] Descargando imágenes ($TAG) y desplegando..."
+$COMPOSE -f "$COMPOSE_FILE" pull         # baja solo capas nuevas; reutiliza el resto
+$COMPOSE -f "$COMPOSE_FILE" up -d         # SIN --build
+echo "  OK"
+
+# 4. Healthchecks ------------------------------------------------------------
+echo ""
+echo "[4/4] Esperando servicios..."
+echo "  DB (hasta 60s)..."
 for i in $(seq 1 20); do
-  if curl -sf http://localhost:3001/health &>/dev/null; then
-    echo "  DB lista."
-    break
-  fi
-  if [ "$i" -eq 20 ]; then
-    echo "  ✗ DB no respondió. Revisa los logs: $COMPOSE logs db"
-    exit 1
-  fi
+  curl -sf http://localhost:3001/health &>/dev/null && { echo "  DB lista."; break; }
+  [ "$i" -eq 20 ] && { echo "  ✗ DB no respondió. Logs: $COMPOSE -f $COMPOSE_FILE logs db"; exit 1; }
   sleep 3
 done
-
-echo "  Esperando App (hasta 30s)..."
+echo "  App (hasta 30s)..."
 for i in $(seq 1 10); do
-  if curl -sf http://localhost:3000 &>/dev/null; then
-    echo "  App lista."
-    break
-  fi
+  curl -sf http://localhost:3000 &>/dev/null && { echo "  App lista."; break; }
   sleep 3
 done
-
-echo ""
-./test.sh
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -132,5 +87,6 @@ echo "  App   → http://localhost:3000"
 echo "  API   → http://localhost:3001"
 echo "  Vault → http://localhost:8200"
 echo "  Docs  → http://localhost:3001/api-docs"
+echo "  Limpieza ocasional de imágenes viejas:  podman image prune"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""

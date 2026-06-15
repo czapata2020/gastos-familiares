@@ -2,10 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --sidebar-width: 240px;
-}
-
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  background-color: #F5F5F5;
+  @apply text-gray-900 antialiased;
 }
