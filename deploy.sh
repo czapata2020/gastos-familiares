@@ -16,6 +16,7 @@ cd "$(dirname "$0")"
 OWNER="czapata2020"                 # <-- tu usuario/org de GitHub, en minúsculas
 COMPOSE_FILE="compose.prod.yaml"
 export TAG="${1:-latest}"
+DOMAIN="$(grep -E '^DOMAIN=' .env 2>/dev/null | tail -1 | cut -d= -f2-)"
 
 OS="$(uname -s)"
 
@@ -80,21 +81,25 @@ for i in $(seq 1 10); do
   curl -sf http://localhost:3000 &>/dev/null && { echo "  App lista."; break; }
   sleep 3
 done
-echo "  n8n (hasta 60s)..."
-for i in $(seq 1 20); do
-  curl -sf http://localhost:5678/healthz &>/dev/null && { echo "  n8n listo."; break; }
-  [ "$i" -eq 20 ] && { echo "  ✗ n8n no respondió. Logs: $COMPOSE -f $COMPOSE_FILE logs n8n"; }
-  sleep 3
-done
+if [ -n "$DOMAIN" ]; then
+  echo "  Caddy / HTTPS (hasta 60s — puede tardar en emitir el certificado Let's Encrypt)..."
+  for i in $(seq 1 20); do
+    curl -sf "https://$DOMAIN" &>/dev/null && { echo "  HTTPS listo."; break; }
+    [ "$i" -eq 20 ] && echo "  ⚠ https://$DOMAIN no respondió aún. Logs: $COMPOSE -f $COMPOSE_FILE logs caddy"
+    sleep 3
+  done
+fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  App   → http://localhost:3000"
-echo "  API   → http://localhost:3001"
-echo "  Vault → http://localhost:8200"
-echo "  n8n   → http://localhost:5678"
-echo "  WAHA  → http://localhost:3010"
-echo "  Docs  → http://localhost:3001/api-docs"
+if [ -n "$DOMAIN" ]; then
+  echo "  App   → https://$DOMAIN"
+else
+  echo "  App   → http://localhost:3000  (⚠ define DOMAIN en .env para HTTPS público)"
+fi
+echo "  API   → http://localhost:3001  (solo desde la VPS)"
+echo "  Vault → http://localhost:8200  (solo desde la VPS)"
+echo "  Docs  → http://localhost:3001/api-docs  (solo desde la VPS)"
 echo "  Limpieza ocasional de imágenes viejas:  podman image prune"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""

@@ -20,6 +20,8 @@ Aplicación web para gestionar y visualizar gastos compartidos del hogar entre d
 | Email | Nodemailer | — |
 | Tareas programadas | node-cron | — |
 | Documentación API | Swagger UI (swagger-jsdoc) | — |
+| Autenticación | Auth.js v5 (Google SSO) | — |
+| Reverse proxy / TLS (prod) | Caddy | 2 |
 | Contenedores | Podman + podman-compose | — |
 | Runtime | Node.js | 22 (Alpine) |
 
@@ -29,12 +31,21 @@ Aplicación web para gestionar y visualizar gastos compartidos del hogar entre d
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Navegador                                              │
-│  Next.js App (puerto 3000)                              │
-│  ├── Páginas (App Router)                               │
-│  └── API Routes /api/* (BFF)                            │
+│  Internet                                                │
 └────────────────────┬────────────────────────────────────┘
-                     │ HTTP interno (red Docker)
+                     │ HTTPS (80/443, Let's Encrypt automático)
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Caddy (solo en compose.prod.yaml)                       │
+└────────────────────┬────────────────────────────────────┘
+                     │ interno (red Podman)
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Next.js App (puerto 3000, 127.0.0.1 en prod)            │
+│  ├── Páginas (App Router) + Auth.js (Google SSO)         │
+│  └── API Routes /api/* (BFF)                             │
+└────────────────────┬────────────────────────────────────┘
+                     │ HTTP interno (red Podman)
           ┌──────────┴──────────┐
           ▼                     ▼
 ┌──────────────────┐   ┌─────────────────┐
@@ -44,7 +55,7 @@ Aplicación web para gestionar y visualizar gastos compartidos del hogar entre d
 └──────────────────┘   └─────────────────┘
 ```
 
-El frontend de Next.js actúa como **BFF (Backend for Frontend)**: sus API routes proxy las peticiones del cliente hacia el servicio DB y hacia Vault, sin exponer ningún servicio interno al navegador.
+El frontend de Next.js actúa como **BFF (Backend for Frontend)**: sus API routes proxy las peticiones del cliente hacia el servicio DB y hacia Vault, sin exponer ningún servicio interno al navegador. En producción, `db` y `vault` solo publican sus puertos en `127.0.0.1` (no a internet); el único puerto público es el de Caddy (80/443).
 
 ---
 
@@ -56,11 +67,17 @@ El frontend de Next.js actúa como **BFF (Backend for Frontend)**: sus API route
 - En desarrollo corre con hot-reload (`npm run dev`).
 - Volúmenes nombrados para `node_modules` y `.next` para evitar conflictos con el bind mount del código fuente.
 
+- Autenticación con Google SSO (Auth.js v5), restringida a una lista de correos permitidos.
+
 **Variables de entorno**
 
 | Variable | Descripción |
 |---|---|
 | `DB_URL` | URL del servicio DB (`http://db:3001`) |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Credenciales del OAuth Client ID de Google Cloud Console |
+| `AUTH_SECRET` | Clave para firmar sesión/JWT (`openssl rand -base64 32`) |
+| `AUTH_URL` | URL pública de la app, usada por Auth.js para armar los callbacks en producción |
+| `ALLOWED_EMAILS` | Correos con acceso, separados por coma |
 
 ### `db` — Express + SQLite (puerto 3001)
 
@@ -219,6 +236,28 @@ enviarNotificaciones()
     └── Envía email HTML con Nodemailer
          (deduplicado por tabla notificaciones_enviadas)
 ```
+
+---
+
+## Autenticación
+
+Google SSO vía [Auth.js v5](https://authjs.dev) (`next-auth@beta`), sin base de datos de usuarios propia.
+
+```
+Usuario visita cualquier ruta
+    │
+    ▼
+middleware.ts  ──sin sesión──▶  redirige a /login
+    │ con sesión
+    ▼
+auth.ts → callbacks.signIn
+    ├── ¿email ∈ ALLOWED_EMAILS?  → sí: entra
+    └── no: rechazado, vuelve a /login con ?error
+```
+
+- Sesión en JWT (sin tabla de usuarios ni sesiones en SQLite).
+- El allowlist de `ALLOWED_EMAILS` es la única autorización — pensado para 2 personas.
+- Archivos clave: `auth.ts` (config + allowlist), `middleware.ts` (protección de rutas), `app/login/page.tsx`, `app/actions/auth.ts` (logout).
 
 ---
 

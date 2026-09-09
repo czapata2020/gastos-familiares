@@ -9,26 +9,30 @@ import {
   ScrollText,
   Settings2,
   Wallet,
-  ScanLine,
   ChevronLeft,
   ChevronRight,
+  LogOut,
 } from 'lucide-react'
+import { logout } from '@/app/actions/auth'
 
+// Nota: "Recibos" (/recibos) queda fuera del menú porque depende de la
+// automatización de n8n + WAHA, deshabilitada por ahora. El código y los
+// endpoints siguen intactos para reactivarla más adelante.
 const NAV = [
   { href: '/',              label: 'Resumen',        icon: LayoutDashboard },
   { href: '/transversales', label: 'Gastos fijos',   icon: Repeat2         },
   { href: '/servicios',     label: 'Servicios',      icon: Zap             },
   { href: '/historial',     label: 'Historial',      icon: ScrollText      },
-  { href: '/recibos',       label: 'Recibos',        icon: ScanLine        },
   { href: '/configuracion', label: 'Configuración',  icon: Settings2       },
 ]
 
 interface Props {
   collapsed: boolean
   onToggle: () => void
+  user: { name?: string | null; email?: string | null; image?: string | null }
 }
 
-export default function Sidebar({ collapsed, onToggle }: Props) {
+export default function Sidebar({ collapsed, onToggle, user }: Props) {
   const pathname = usePathname()
   return (
     <aside
@@ -78,7 +82,20 @@ export default function Sidebar({ collapsed, onToggle }: Props) {
       {/* Footer + Toggle */}
       <div className="border-t border-white/10">
         {!collapsed && (
-          <div className="px-5 py-3 text-xs text-white/30 tracking-wide">v0.1</div>
+          <div className="px-5 py-3 flex items-center justify-between gap-2">
+            <span className="text-xs text-white/40 truncate" title={user.email ?? undefined}>
+              {user.name ?? user.email}
+            </span>
+            <form action={logout}>
+              <button
+                type="submit"
+                title="Cerrar sesión"
+                className="text-white/40 hover:text-white/80 transition-colors shrink-0"
+              >
+                <LogOut className="w-4 h-4" strokeWidth={1.75} />
+              </button>
+            </form>
+          </div>
         )}
         <button
           onClick={onToggle}
