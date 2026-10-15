@@ -3,7 +3,7 @@
 #   docker compose pull && docker compose up -d
 services:
   app:
-    image: ghcr.io/czapata2020/gastos-familiares-app:${TAG:-latest}
+    image: ghcr.io/czapata2020/gastos-familiares-app:${TAG:-local}
     env_file: .env
     volumes:
       - ./data:/data            # base SQLite + backups diarios: NO borrar

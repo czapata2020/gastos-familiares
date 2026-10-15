@@ -1,5 +1,5 @@
 # Construye la imagen de la app y la publica en GHCR en cada push a main (y en tags v*).
-# Si definiste las variables/secretos del Droplet, además despliega automáticamente.
+# El despliegue al Droplet se hace con deploy/deploy.sh (la imagen viaja por SSH).
 name: Build y deploy
 
 on:
@@ -47,19 +47,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  # Opcional: Settings → Secrets and variables → Actions
-  #   variable DROPLET_HOST (IP) y secreto DROPLET_SSH_KEY (clave privada con acceso root al Droplet)
-  deploy:
-    needs: build
-    if: vars.DROPLET_HOST != '' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Desplegar en el Droplet
-        env:
-          SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
-          HOST: ${{ vars.DROPLET_HOST }}
-        run: |
-          mkdir -p ~/.ssh && echo "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-          ./deploy/deploy.sh "$HOST" "${{ needs.build.outputs.tag }}"

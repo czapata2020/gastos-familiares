@@ -12,8 +12,8 @@ runcmd:
   - ufw default allow outgoing
   - ufw allow OpenSSH
   - ufw --force enable
-  # 1 GB de swap para que el Droplet de 1 GB no se quede sin memoria
-  - fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  # 2 GB de swap para que un Droplet chico no se quede sin memoria
+  - fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
   - echo '/swapfile none swap sw 0 0' >> /etc/fstab
   - mkdir -p /opt/gastos/data && chown 1001:1001 /opt/gastos/data
   - timedatectl set-timezone America/Lima
