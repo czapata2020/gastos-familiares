@@ -1,71 +1,21 @@
+# Producción en el Droplet. La app no publica puertos a internet:
+# cloudflared abre un túnel saliente hacia Cloudflare, y Cloudflare Access hace el login.
+#   docker compose pull && docker compose up -d
 services:
-  vault:
-    build:
-      context: ./vault
-    ports:
-      - "8200:8200"
-    volumes:
-      - vault-data:/openbao/data
-      - vault-tokens:/vault-tokens
-    cap_add:
-      - IPC_LOCK
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8200/v1/sys/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 60s
-    restart: unless-stopped
-
-  db:
-    build:
-      context: ./db
-    ports:
-      - "3001:3001"
-    volumes:
-      - db-data:/data
-      - vault-tokens:/vault-tokens
-    environment:
-      - DB_PATH=/data/gastos.db
-      - PORT=3001
-      - VAULT_ADDR=http://vault:8200
-      - VAULT_TOKEN_FILE=/vault-tokens/app.token
-    depends_on:
-      vault:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:3001/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 15s
-    restart: unless-stopped
-
   app:
-    build:
-      context: .
-      target: dev
-    ports:
-      - "3000:3000"
+    image: ghcr.io/czapata2020/gastos-familiares-app:${TAG:-local}
+    env_file: .env
     volumes:
-      - .:/app
-      - app_node_modules:/app/node_modules
-      - app_next:/app/.next
-    environment:
-      - DB_URL=http://db:3001
-      - AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID:-}
-      - AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET:-}
-      - AUTH_SECRET=${AUTH_SECRET:-}
-      - AUTH_URL=${AUTH_URL:-http://localhost:3000}
-      - ALLOWED_EMAILS=${ALLOWED_EMAILS:-}
-    depends_on:
-      db:
-        condition: service_healthy
+      - ./data:/data            # base SQLite + backups diarios: NO borrar
+    ports:
+      - "127.0.0.1:3000:3000"   # solo desde el propio Droplet (ssh), útil para diagnosticar
     restart: unless-stopped
 
-volumes:
-  db-data:
-  vault-data:
-  vault-tokens:
-  app_node_modules:
-  app_next:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - app
+    restart: unless-stopped

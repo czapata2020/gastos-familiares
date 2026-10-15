@@ -1,14 +1,6 @@
-# .github/workflows/build-and-push.yml
-#
-# Construye y publica en GHCR las TRES imágenes propias del proyecto:
-#   - app   (Next.js, target 'runner' de producción)
-#   - db    (API Node + better-sqlite3)
-#   - vault (OpenBao con tu config/entrypoint)
-#
-# Se dispara en cada push a main y en cada tag vX.Y.Z.
-# El servidor NUNCA construye: solo hace pull de estas imágenes.
-
-name: Build and Push Images
+# Construye la imagen de la app y la publica en GHCR en cada push a main (y en tags v*).
+# El despliegue al Droplet se hace con deploy/deploy.sh (la imagen viaja por SSH).
+name: Build y deploy
 
 on:
   push:
@@ -16,64 +8,42 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-
 jobs:
-  build-and-push:
+  test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: app
-            context: .
-            dockerfile: ./Dockerfile
-            target: runner          # <<< solo la app usa multi-stage; este es el stage de prod
-          - name: db
-            context: ./db
-            dockerfile: ./db/Dockerfile
-            target: ''
-          - name: vault
-            context: ./vault
-            dockerfile: ./vault/Dockerfile
-            target: ''
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}   # token automatico; no creas secrets
-
-      - name: Tags y labels (${{ matrix.name }})
-        id: meta
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    outputs:
+      tag: ${{ steps.short.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: short
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
+      - id: meta
         uses: docker/metadata-action@v5
         with:
-          # ghcr.io/<owner>/gastos-familiares-<app|db|vault>
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/gastos-familiares-${{ matrix.name }}
+          images: ghcr.io/${{ github.repository_owner }}/gastos-familiares-app
           tags: |
-            type=sha,format=short                               # sha-a1b2c3d (inmutable)
-            type=ref,event=tag                                  # v1.4.2 (si pusheaste un tag)
-            type=raw,value=latest,enable={{is_default_branch}}  # latest solo en main
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push (${{ matrix.name }})
-        uses: docker/build-push-action@v6
+            type=sha,format=short
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          target: ${{ matrix.target }}     # vacio para db/vault, 'runner' para app
+          context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

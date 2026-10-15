@@ -2,7 +2,57 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Tokens como tripletas RGB para poder usar opacidad en Tailwind (bg-accent/20). */
+:root {
+  --bg: 243 245 244;
+  --surface: 255 255 255;
+  --surface-2: 236 240 238;
+  --ink: 17 24 22;
+  --ink-2: 75 86 82;
+  --ink-3: 107 118 114;
+  --line: 221 227 225;
+  --accent: 15 107 92;
+  --accent-ink: 255 255 255;
+  --accent-soft: 220 239 233;
+  --p1: 42 120 214;
+  --p2: 235 104 52;
+  --good: 31 138 76;
+  --warn: 183 121 31;
+  --bad: 196 65 59;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: 12 17 16;
+    --surface: 21 28 26;
+    --surface-2: 29 38 35;
+    --ink: 238 243 241;
+    --ink-2: 180 192 187;
+    --ink-3: 131 144 139;
+    --line: 40 50 47;
+    --accent: 76 195 168;
+    --accent-ink: 6 32 26;
+    --accent-soft: 22 51 44;
+    --p1: 57 135 229;
+    --p2: 217 89 38;
+    --good: 76 192 125;
+    --warn: 224 167 67;
+    --bad: 239 106 98;
+    color-scheme: dark;
+  }
+}
+
+html { -webkit-tap-highlight-color: transparent; }
 body {
-  background-color: #F5F5F5;
-  @apply text-gray-900 antialiased;
+  @apply bg-bg text-ink antialiased;
+  font-feature-settings: 'tnum' 0;
+}
+.num { font-variant-numeric: tabular-nums; }
+
+input, select, textarea { font-size: 16px; } /* evita el zoom automático de iOS */
+@media (min-width: 768px) { input, select, textarea { font-size: 14px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }
