@@ -104,6 +104,7 @@ export default function Inicio() {
                     <Sigla categoria={f.categoria} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[15px] font-semibold">{f.nombre}</p>
+                      {f.pago?.nota && <p className="truncate text-xs text-ink-2">{f.pago.nota}</p>}
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-3">
                         <PillEstado estado={estado} dia={f.diaVencimiento} />
                         <span>{asign === 'ambos' ? 'Ambos' : nombreCorto(personas[asign === '1' ? 0 : 1])}</span>
