@@ -14,6 +14,7 @@ export const POST = handler(async (req: Request) => {
     asignadoA: v.asignacion(b.asignadoA),
     pagado: b.pagado === true,
     nota: v.texto(b.nota, 'Nota', 200, false),
+    asignacionManual: b.manual === true,
   })
   return { ok: true, id }
 })

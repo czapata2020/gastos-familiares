@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Check, Copy, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Check, Copy, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import type { Asignacion, Categoria, Concepto, EstadoMes, FilaMes, Persona } from '@/types'
 import { api, dinero, parseMonto, useDatos, usePeriodo } from '@/lib/cliente'
-import { dividir, estadoFila } from '@/lib/reparto'
+import { dividir, estadoFila, montoFila } from '@/lib/reparto'
 import { CATEGORIAS } from '@/lib/categorias'
 import {
   btnPrimario, btnSecundario, Cargando, Chips, Encabezado, ErrorCarga, Hoja, inputCls, MesSelector, nombreCorto,
@@ -43,6 +43,19 @@ export default function Registrar() {
     } catch (e) { aviso((e as Error).message, true) } finally { setOcupado(false) }
   }
 
+  // Reparto de los recurrentes (registrados o por registrar) frente al objetivo por ingreso
+  const auto = config.asignacionAuto
+  let r1 = 0, r2 = 0
+  for (const f of data.filas) {
+    if (f.tipo === 'ocasional' || !f.concepto) continue
+    const m = montoFila(f)
+    if (m == null) continue
+    const quien = f.pago?.asignadoA ?? f.asignacionSugerida ?? f.concepto.asignadoDefault
+    const [x, y] = dividir(m, quien, pct1)
+    r1 += x; r2 += y
+  }
+  const rTotal = r1 + r2
+
   const grupos = (['fijo', 'variable', 'ocasional'] as const)
     .map(t => ({ tipo: t, filas: data.filas.filter(f => f.tipo === t) }))
     .filter(g => g.filas.length)
@@ -66,6 +79,31 @@ export default function Registrar() {
           </Tarjeta>
         )}
 
+        {auto && rTotal > 0 && (
+          <Tarjeta className="grid gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold"><Wand2 className="h-4 w-4 text-accent" />Asignación automática de recurrentes</div>
+            <div className="flex gap-0.5 overflow-hidden rounded-md" style={{ height: 10 }}>
+              <i className="block bg-p1" style={{ width: `${(r1 / rTotal) * 100}%` }} /><i className="block flex-1 bg-p2" />
+            </div>
+            <div className="num flex flex-wrap justify-between gap-x-3 text-sm">
+              <span><b className="text-p1">{nombreCorto(personas[0])}</b> {dinero(r1, mon)} · {((r1 / rTotal) * 100).toFixed(0)}%</span>
+              <span><b className="text-p2">{nombreCorto(personas[1])}</b> {dinero(r2, mon)} · {((r2 / rTotal) * 100).toFixed(0)}%</span>
+            </div>
+            <p className="text-xs text-ink-3">
+              Objetivo por ingreso: {pct1.toFixed(0)}% / {(100 - pct1).toFixed(0)}%.
+              {Math.abs(data.arrastre1) >= 1 && <> Este mes compensa lo de meses anteriores: {nombreCorto(personas[data.arrastre1 > 0 ? 0 : 1])} venía cargando {dinero(Math.abs(data.arrastre1), mon)} de más.</>}
+              {' '}Cada gasto va completo a una persona; los pagados y los que eliges a mano no se mueven. Los ocasionales se asignan aparte.
+            </p>
+            {data.filas.some(f => f.pago && !f.pago.pagado && f.pago.asignacionManual && f.tipo !== 'ocasional') && (
+              <button type="button" className={`${btnSecundario} justify-self-start`} disabled={ocupado} onClick={async () => {
+                setOcupado(true)
+                try { await api('/api/mes/automatico', 'POST', { anio, mes }); aviso('Mes reasignado automáticamente'); await recargar() }
+                catch (e) { aviso((e as Error).message, true) } finally { setOcupado(false) }
+              }}><Wand2 className="h-4 w-4" />Pasar todo el mes a automático</button>
+            )}
+          </Tarjeta>
+        )}
+
         {grupos.length === 0 && (
           <Tarjeta className="grid gap-2 text-center">
             <p className="font-display text-lg font-bold">Nada para este mes todavía</p>
@@ -77,7 +115,7 @@ export default function Registrar() {
           <Seccion key={g.tipo} titulo={TITULOS[g.tipo]} extra={`${g.filas.filter(f => f.pago?.pagado).length}/${g.filas.length} pagados`}>
             <Tarjeta className="!py-0">
               {g.filas.map(f => (
-                <FilaEditable key={f.key} f={f} anio={anio} mes={mes} moneda={mon} personas={personas}
+                <FilaEditable key={f.key} f={f} anio={anio} mes={mes} personas={personas} auto={auto}
                   onCambio={recargar} onError={m => aviso(m, true)} />
               ))}
             </Tarjeta>
@@ -111,23 +149,24 @@ export default function Registrar() {
   )
 }
 
-function FilaEditable({ f, anio, mes, moneda, personas, onCambio, onError }: {
-  f: FilaMes; anio: number; mes: number; moneda: string; personas: [Persona, Persona]
+function FilaEditable({ f, anio, mes, personas, auto, onCambio, onError }: {
+  f: FilaMes; anio: number; mes: number; personas: [Persona, Persona]; auto: boolean
   onCambio: () => Promise<void>; onError: (m: string) => void
 }) {
+  const asignInicial = (): Asignacion => f.pago?.asignadoA ?? f.asignacionSugerida ?? f.concepto?.asignadoDefault ?? 'ambos'
   const [monto, setMonto] = useState(f.pago ? String(f.pago.monto) : '')
-  const [asign, setAsign] = useState<Asignacion>(f.pago?.asignadoA ?? f.concepto?.asignadoDefault ?? 'ambos')
+  const [asign, setAsign] = useState<Asignacion>(asignInicial)
   const [pagado, setPagado] = useState(f.pago?.pagado ?? false)
   const [confirmarBorrar, setConfirmarBorrar] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
   useEffect(() => {
     setMonto(f.pago ? String(f.pago.monto) : '')
-    setAsign(f.pago?.asignadoA ?? f.concepto?.asignadoDefault ?? 'ambos')
+    setAsign(asignInicial())
     setPagado(f.pago?.pagado ?? false)
-  }, [f.pago, f.concepto])
+  }, [f.pago, f.concepto, f.asignacionSugerida]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const guardar = useCallback(async (cambios: { monto?: number; asignadoA?: Asignacion; pagado?: boolean }) => {
+  const guardar = useCallback(async (cambios: { monto?: number; asignadoA?: Asignacion; pagado?: boolean; automatico?: boolean }) => {
     setGuardando(true)
     try {
       if (f.pago) {
@@ -138,6 +177,7 @@ function FilaEditable({ f, anio, mes, moneda, personas, onCambio, onError }: {
         await api('/api/pagos', 'POST', {
           conceptoId: f.concepto?.id, nombre: f.nombre, categoria: f.categoria, tipo: f.tipo, anio, mes, monto: m,
           asignadoA: cambios.asignadoA ?? asign, pagado: cambios.pagado ?? pagado,
+          manual: cambios.asignadoA !== undefined,
         })
       }
       await onCambio()
@@ -174,6 +214,12 @@ function FilaEditable({ f, anio, mes, moneda, personas, onCambio, onError }: {
   }
 
   const estado = estadoFila({ ...f, pago: f.pago ? { ...f.pago, pagado } : null }, anio, mes)
+  // Etiqueta de cómo se decidió a quién le toca (solo recurrentes con asignación automática)
+  const recurrente = f.tipo !== 'ocasional' && !!f.concepto
+  const modo = !auto || !recurrente ? null
+    : f.pago?.pagado ? null
+    : f.pago?.asignacionManual ? 'manual'
+    : f.concepto!.asignadoDefault !== 'ambos' ? 'fijo' : 'auto'
 
   return (
     <div className={`grid gap-2 border-t border-line py-3 first:border-0 ${guardando ? 'opacity-70' : ''}`}>
@@ -197,8 +243,17 @@ function FilaEditable({ f, anio, mes, moneda, personas, onCambio, onError }: {
         </div>
       </div>
       <div className="flex items-center justify-between gap-2 pl-[52px]">
-        <Chips valor={asign} personas={personas} onChange={cambiarAsign} disabled={guardando} />
-        <div className="flex items-center gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <Chips valor={asign} personas={personas} onChange={cambiarAsign} disabled={guardando} />
+          {modo === 'auto' && <span className="text-[11px] font-semibold text-accent">Auto</span>}
+          {modo === 'fijo' && <span className="text-[11px] text-ink-3">Siempre</span>}
+          {modo === 'manual' && (
+            <button type="button" onClick={() => guardar({ automatico: true })} className="text-[11px] font-semibold text-ink-3 underline underline-offset-2">
+              A mano · volver a auto
+            </button>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
           {f.pago && (
             <button type="button" onClick={borrar} aria-label={confirmarBorrar ? 'Confirmar quitar registro' : 'Quitar registro'}
               className={`grid h-9 place-items-center rounded-full px-2 text-xs font-semibold transition ${confirmarBorrar ? 'bg-bad text-white' : 'text-ink-3 hover:text-bad'}`}>

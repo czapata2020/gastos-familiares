@@ -42,9 +42,9 @@ export function Tarjeta({ className = '', children }: { className?: string; chil
 export function Seccion({ titulo, extra, children }: { titulo: string; extra?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="grid gap-2">
-      <div className="flex items-baseline justify-between gap-2 px-1">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 px-1">
         <h2 className="font-display text-base font-bold">{titulo}</h2>
-        {extra && <span className="text-xs text-ink-3">{extra}</span>}
+        {extra && <span className="min-w-0 text-xs text-ink-3">{extra}</span>}
       </div>
       {children}
     </div>

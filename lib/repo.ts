@@ -1,7 +1,7 @@
 import 'server-only'
 import type { Asignacion, Categoria, Concepto, Config, EstadoMes, Pago, Persona, Reparto, TipoConcepto } from '@/types'
 import { getDb, uid } from './db'
-import { armarFilas, porcentajePersona1, repartoVigente } from './reparto'
+import { armarFilas, asignacionAutomatica, dividir, porcentajePersona1, repartoVigente } from './reparto'
 import { calcularMetricas } from './metricas'
 
 type Row = Record<string, any>
@@ -11,12 +11,12 @@ const toConcepto = (r: Row): Concepto => ({
   id: r.id, nombre: r.nombre, categoria: r.categoria, tipo: r.tipo, montoRef: r.monto_ref,
   asignadoDefault: r.asignado_default, diaVencimiento: r.dia_vencimiento,
   mesesActivos: json(r.meses_activos), mesesCuotaDoble: json(r.meses_cuota_doble),
-  nota: r.nota, activo: r.activo === 1,
+  nota: r.nota, activo: r.activo === 1, desde: r.desde ?? null, hasta: r.hasta ?? null,
 })
 const toPago = (r: Row): Pago => ({
   id: r.id, conceptoId: r.concepto_id, nombre: r.nombre, categoria: r.categoria, tipo: r.tipo,
   anio: r.anio, mes: r.mes, monto: r.monto, asignadoA: r.asignado_a, pagado: r.pagado === 1,
-  fechaPago: r.fecha_pago, nota: r.nota,
+  fechaPago: r.fecha_pago, nota: r.nota, asignacionManual: r.asignacion_manual === 1,
 })
 const toReparto = (r: Row): Reparto => ({
   id: r.id, desde: r.desde, salario1: r.salario1, moneda1: r.moneda1, salario2: r.salario2,
@@ -26,11 +26,13 @@ const toReparto = (r: Row): Reparto => ({
 // ── Config y personas ─────────────────────────────────────────────────────────
 
 export function getConfig(): Config {
-  const r = getDb().prepare("SELECT valor FROM config WHERE clave = 'moneda'").get() as Row | undefined
-  return { monedaBase: r?.valor || 'PEN' }
+  const m = Object.fromEntries((getDb().prepare("SELECT clave, valor FROM config WHERE clave IN ('moneda', 'asignacion_auto')").all() as Row[]).map(r => [r.clave, r.valor]))
+  return { monedaBase: m.moneda || 'PEN', asignacionAuto: m.asignacion_auto !== '0' }
 }
-export function setConfig(c: Config) {
-  getDb().prepare("INSERT OR REPLACE INTO config (clave, valor) VALUES ('moneda', ?)").run(c.monedaBase)
+export function setConfig(c: Partial<Config>) {
+  const up = getDb().prepare('INSERT OR REPLACE INTO config (clave, valor) VALUES (?, ?)')
+  if (c.monedaBase !== undefined) up.run('moneda', c.monedaBase)
+  if (c.asignacionAuto !== undefined) up.run('asignacion_auto', c.asignacionAuto ? '1' : '0')
 }
 export function getPersonas(): [Persona, Persona] {
   const rows = getDb().prepare('SELECT * FROM personas ORDER BY id').all() as Persona[]
@@ -70,14 +72,15 @@ export function listConceptos(incluirInactivos = false): Concepto[] {
 export function guardarConcepto(c: Omit<Concepto, 'id'> & { id?: string }) {
   const id = c.id ?? uid('con')
   getDb().prepare(`INSERT INTO conceptos (id, nombre, categoria, tipo, monto_ref, asignado_default, dia_vencimiento,
-                     meses_activos, meses_cuota_doble, nota, activo)
+                     meses_activos, meses_cuota_doble, nota, activo, desde, hasta)
                    VALUES (@id, @nombre, @categoria, @tipo, @montoRef, @asignadoDefault, @diaVencimiento,
-                     @mesesActivos, @mesesCuotaDoble, @nota, @activo)
+                     @mesesActivos, @mesesCuotaDoble, @nota, @activo, @desde, @hasta)
                    ON CONFLICT(id) DO UPDATE SET nombre=@nombre, categoria=@categoria, tipo=@tipo, monto_ref=@montoRef,
                      asignado_default=@asignadoDefault, dia_vencimiento=@diaVencimiento, meses_activos=@mesesActivos,
-                     meses_cuota_doble=@mesesCuotaDoble, nota=@nota, activo=@activo`)
+                     meses_cuota_doble=@mesesCuotaDoble, nota=@nota, activo=@activo, desde=@desde, hasta=@hasta`)
     .run({
       ...c, id, nombre: c.nombre.trim(), montoRef: c.montoRef ?? null, diaVencimiento: c.diaVencimiento ?? null,
+      desde: c.desde ?? null, hasta: c.hasta ?? null,
       mesesActivos: JSON.stringify(c.mesesActivos ?? []), mesesCuotaDoble: JSON.stringify(c.mesesCuotaDoble ?? []),
       nota: c.nota ?? '', activo: c.activo === false ? 0 : 1,
     })
@@ -112,28 +115,30 @@ export interface NuevoPago {
   asignadoA: Asignacion
   pagado?: boolean
   nota?: string
+  asignacionManual?: boolean
 }
 
-export function crearPago(p: NuevoPago): string {
+export function crearPago(p: NuevoPago, rebalancear = true): string {
   const id = uid('pag')
-  getDb().prepare(`INSERT INTO pagos (id, concepto_id, nombre, categoria, tipo, anio, mes, monto, asignado_a, pagado, fecha_pago, nota)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  getDb().prepare(`INSERT INTO pagos (id, concepto_id, nombre, categoria, tipo, anio, mes, monto, asignado_a, pagado, fecha_pago, nota, asignacion_manual)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT DO NOTHING`)
     .run(id, p.conceptoId ?? null, p.nombre.trim(), p.categoria, p.tipo, p.anio, p.mes, p.monto, p.asignadoA,
-      p.pagado ? 1 : 0, p.pagado ? hoyISO() : null, p.nota ?? '')
+      p.pagado ? 1 : 0, p.pagado ? hoyISO() : null, p.nota ?? '', p.asignacionManual ? 1 : 0)
+  if (p.tipo === 'ocasional' || !p.conceptoId) return id
+  if (rebalancear) rebalancearMes(p.anio, p.mes)
   // Si ya existía el pago recurrente de ese mes (doble toque, dos personas a la vez), devolvemos el existente.
-  if (p.conceptoId && p.tipo !== 'ocasional') {
-    const r = getDb().prepare('SELECT id FROM pagos WHERE concepto_id = ? AND anio = ? AND mes = ?').get(p.conceptoId, p.anio, p.mes) as Row
-    return r.id
-  }
-  return id
+  const r = getDb().prepare('SELECT id FROM pagos WHERE concepto_id = ? AND anio = ? AND mes = ?').get(p.conceptoId, p.anio, p.mes) as Row
+  return r.id
 }
 
-export function actualizarPago(id: string, patch: Partial<Pick<Pago, 'monto' | 'asignadoA' | 'pagado' | 'nota' | 'nombre'>>) {
+export function actualizarPago(id: string, patch: Partial<Pick<Pago, 'monto' | 'asignadoA' | 'pagado' | 'nota' | 'nombre'>> & { automatico?: boolean }) {
   const sets: string[] = []
   const params: Record<string, unknown> = { id }
   if (patch.monto !== undefined) { sets.push('monto = @monto'); params.monto = patch.monto }
-  if (patch.asignadoA !== undefined) { sets.push('asignado_a = @asignadoA'); params.asignadoA = patch.asignadoA }
+  // Elegir a mano a quién le toca fija el pago; "automático" lo devuelve a la regla.
+  if (patch.asignadoA !== undefined) { sets.push('asignado_a = @asignadoA', 'asignacion_manual = 1'); params.asignadoA = patch.asignadoA }
+  else if (patch.automatico) sets.push('asignacion_manual = 0')
   if (patch.nota !== undefined) { sets.push('nota = @nota'); params.nota = patch.nota }
   if (patch.nombre !== undefined) { sets.push('nombre = @nombre'); params.nombre = patch.nombre.trim() }
   if (patch.pagado !== undefined) {
@@ -144,10 +149,39 @@ export function actualizarPago(id: string, patch: Partial<Pick<Pago, 'monto' | '
   if (!sets.length) return
   sets.push("actualizado_en = datetime('now')")
   getDb().prepare(`UPDATE pagos SET ${sets.join(', ')} WHERE id = @id`).run(params)
+  const p = getDb().prepare('SELECT anio, mes, tipo FROM pagos WHERE id = ?').get(id) as Row | undefined
+  if (p && p.tipo !== 'ocasional') rebalancearMes(p.anio, p.mes)
 }
 
 export function borrarPago(id: string) {
+  const p = getDb().prepare('SELECT anio, mes, tipo FROM pagos WHERE id = ?').get(id) as Row | undefined
   getDb().prepare('DELETE FROM pagos WHERE id = ?').run(id)
+  if (p && p.tipo !== 'ocasional') rebalancearMes(p.anio, p.mes)
+}
+
+/** Devuelve a la regla automática todos los recurrentes del mes que no están pagados. */
+export function automatizarMes(anio: number, mes: number): number {
+  getDb().prepare("UPDATE pagos SET asignacion_manual = 0 WHERE anio = ? AND mes = ? AND tipo <> 'ocasional' AND pagado = 0").run(anio, mes)
+  return rebalancearMes(anio, mes)
+}
+
+/**
+ * Con la asignación automática activa, vuelve a repartir los recurrentes registrados del mes que
+ * no están pagados ni fijados a mano. Los ocasionales nunca se tocan.
+ */
+export function rebalancearMes(anio: number, mes: number): number {
+  if (!getConfig().asignacionAuto) return 0
+  const estado = getEstadoMes(anio, mes)
+  const upd = getDb().prepare("UPDATE pagos SET asignado_a = ?, actualizado_en = datetime('now') WHERE id = ?")
+  let n = 0
+  getDb().transaction(() => {
+    for (const f of estado.filas) {
+      if (!f.pago || !f.asignacionSugerida || f.pago.asignadoA === f.asignacionSugerida) continue
+      upd.run(f.asignacionSugerida, f.pago.id)
+      n++
+    }
+  })()
+  return n
 }
 
 /** Registra de una vez todos los recurrentes del mes que aún no tienen pago, con su monto sugerido. */
@@ -162,13 +196,16 @@ export function registrarPendientes(anio: number, mes: number, origen: 'sugerido
       const previo = anteriores.find(p => p.conceptoId === f.concepto!.id)
       const monto = previo?.monto ?? f.montoSugerido
       if (monto == null) continue
+      const auto = estado.config.asignacionAuto
       crearPago({
         conceptoId: f.concepto.id, nombre: f.nombre, categoria: f.categoria, tipo: f.tipo, anio, mes, monto,
-        asignadoA: previo?.asignadoA ?? f.concepto.asignadoDefault,
-      })
+        asignadoA: (auto ? f.asignacionSugerida : previo?.asignadoA) ?? f.concepto.asignadoDefault,
+        asignacionManual: !auto ? false : previo?.asignacionManual ?? false,
+      }, false)
       n++
     }
   })()
+  rebalancearMes(anio, mes)
   return n
 }
 
@@ -178,11 +215,33 @@ export function getEstadoMes(anio: number, mes: number): EstadoMes {
   const config = getConfig()
   const conceptos = listConceptos(true)
   const pct1 = porcentajePersona1(repartoVigente(listRepartos(), anio, mes), config.monedaBase)
+  const filas = armarFilas(conceptos.filter(c => c.activo || c.tipo !== 'ocasional'), listPagos(anio, mes), anio, mes)
+  const arrastre1 = arrastreAnual(anio, mes, config.monedaBase)
+  if (config.asignacionAuto) {
+    const sugerida = asignacionAutomatica(filas, pct1, arrastre1)
+    for (const f of filas) {
+      if (!f.concepto || f.tipo === 'ocasional' || f.pago?.pagado || f.pago?.asignacionManual) continue
+      const preferido = f.concepto.asignadoDefault
+      f.asignacionSugerida = preferido !== 'ambos' ? preferido : sugerida.get(f.key) ?? null
+    }
+  }
   return {
-    anio, mes, config, personas: getPersonas(), porcentaje1: pct1,
-    filas: armarFilas(conceptos.filter(c => c.activo || c.tipo !== 'ocasional'), listPagos(anio, mes), mes),
+    anio, mes, config, personas: getPersonas(), porcentaje1: pct1, arrastre1, filas,
     ocasionales: conceptos.filter(c => c.tipo === 'ocasional' && c.activo),
   }
+}
+
+/** Desvío acumulado de la persona 1 en los recurrentes de enero hasta el mes anterior (mismo año). */
+function arrastreAnual(anio: number, mes: number, monedaBase: string): number {
+  if (mes === 1) return 0
+  const repartos = listRepartos()
+  const rows = getDb().prepare("SELECT mes, monto, asignado_a FROM pagos WHERE anio = ? AND mes < ? AND tipo <> 'ocasional'").all(anio, mes) as Row[]
+  let desvio = 0
+  for (const r of rows) {
+    const pct = porcentajePersona1(repartoVigente(repartos, anio, r.mes), monedaBase)
+    desvio += dividir(r.monto, r.asignado_a, pct)[0] - (r.monto * pct) / 100
+  }
+  return desvio
 }
 
 export function getMetricas(anio: number, mesFoco: number) {

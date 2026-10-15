@@ -50,6 +50,10 @@ body {
 }
 .num { font-variant-numeric: tabular-nums; }
 
+/* Una grilla sin columnas explícitas nunca debe crecer más que su contenedor:
+   por defecto la columna toma el ancho del contenido más largo y empuja la página hacia los lados. */
+.grid:not([class*='grid-cols-']) { grid-template-columns: minmax(0, 1fr); }
+
 input, select, textarea { font-size: 16px; } /* evita el zoom automático de iOS */
 @media (min-width: 768px) { input, select, textarea { font-size: 14px; } }
 

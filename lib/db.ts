@@ -133,6 +133,7 @@ function migrarV1(db: Database.Database) {
         a.asignado_a, a.pagado, a.fecha_pago)
     }
   }
+  db.exec('UPDATE pagos SET asignacion_manual = 1') // asignaciones elegidas a mano en la versión 1
   if (existeTabla(db, 'usos_gasto_unico')) {
     for (const u of db.prepare('SELECT * FROM usos_gasto_unico').all() as Record<string, any>[]) {
       insPago.run(u.id, u.gasto_unico_id, u.gasto_nombre, CATEGORIA_V1[u.gasto_categoria] ?? 'otro', 'ocasional',
@@ -151,6 +152,20 @@ function sembrar(db: Database.Database) {
     db.prepare(`INSERT INTO repartos (id, desde) VALUES (?, ?)`).run(uid('rep'), `${new Date().getFullYear()}-01`)
   }
   db.prepare("INSERT OR IGNORE INTO config (clave, valor) VALUES ('moneda', 'PEN')").run()
+}
+
+/** Columnas agregadas después de la v2 inicial. Idempotente: si ya existen no hace nada. */
+function agregarColumnas(db: Database.Database) {
+  const columnas = (t: string) => new Set((db.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).map(c => c.name))
+  const con = columnas('conceptos')
+  if (!con.has('desde')) db.exec('ALTER TABLE conceptos ADD COLUMN desde TEXT')   // YYYY-MM
+  if (!con.has('hasta')) db.exec('ALTER TABLE conceptos ADD COLUMN hasta TEXT')   // YYYY-MM
+  if (!columnas('pagos').has('asignacion_manual')) {
+    db.exec('ALTER TABLE pagos ADD COLUMN asignacion_manual INTEGER NOT NULL DEFAULT 0')
+    // Lo registrado antes de existir la asignación automática lo eligieron ustedes: se respeta.
+    db.exec('UPDATE pagos SET asignacion_manual = 1')
+  }
+  db.prepare("INSERT OR IGNORE INTO config (clave, valor) VALUES ('asignacion_auto', '1')").run()
 }
 
 async function backupDiario(db: Database.Database) {
@@ -172,6 +187,7 @@ function abrir(): Database.Database {
   db.pragma('journal_mode = WAL')
   db.pragma('busy_timeout = 5000')
   db.exec(SCHEMA)
+  agregarColumnas(db)
 
   const version = (db.prepare("SELECT valor FROM config WHERE clave = 'schema_version'").get() as { valor: string } | undefined)?.valor
   if (version !== '2') {

@@ -76,7 +76,7 @@ export async function revisarVencimientos(hoy = new Date()) {
     .map(r => ({
       id: r.id, nombre: r.nombre, categoria: r.categoria, tipo: r.tipo, montoRef: r.monto_ref, asignadoDefault: r.asignado_default,
       diaVencimiento: r.dia_vencimiento, mesesActivos: JSON.parse(r.meses_activos), mesesCuotaDoble: JSON.parse(r.meses_cuota_doble),
-      nota: r.nota, activo: true,
+      nota: r.nota, activo: true, desde: r.desde, hasta: r.hasta,
     }) as Concepto)
   const pagos = (db.prepare('SELECT * FROM pagos WHERE anio = ? AND mes = ?').all(anio, mes) as Record<string, any>[])
     .map(r => ({ id: r.id, conceptoId: r.concepto_id, pagado: r.pagado === 1 }) as Pago)
@@ -86,7 +86,7 @@ export async function revisarVencimientos(hoy = new Date()) {
   const marcar = db.prepare('INSERT OR IGNORE INTO notificaciones_enviadas (clave) VALUES (?)')
   const claves: string[] = []
 
-  for (const f of armarFilas(conceptos, pagos, mes)) {
+  for (const f of armarFilas(conceptos, pagos, anio, mes)) {
     if (!f.concepto || f.pago?.pagado || !f.diaVencimiento) continue
     const tipo = f.diaVencimiento - dia === 3 ? '3dias' : dia - f.diaVencimiento === 1 ? 'vencido' : null
     if (!tipo) continue

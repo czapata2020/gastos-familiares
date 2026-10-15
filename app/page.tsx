@@ -42,7 +42,7 @@ export default function Inicio() {
       if (f.pago) await api(`/api/pagos/${f.pago.id}`, 'PATCH', { pagado: true })
       else await api('/api/pagos', 'POST', {
         conceptoId: f.concepto?.id, nombre: f.nombre, categoria: f.categoria, tipo: f.tipo, anio, mes, monto,
-        asignadoA: f.concepto?.asignadoDefault ?? 'ambos', pagado: true,
+        asignadoA: f.asignacionSugerida ?? f.concepto?.asignadoDefault ?? 'ambos', pagado: true,
       })
       aviso(`${f.nombre} marcado como pagado`)
     } catch (e) { aviso((e as Error).message, true) }
@@ -98,7 +98,7 @@ export default function Inicio() {
               {pendientes.map(f => {
                 const estado = estadoFila(f, anio, mes)
                 const monto = f.pago?.monto ?? f.montoSugerido
-                const asign = f.pago?.asignadoA ?? f.concepto?.asignadoDefault ?? 'ambos'
+                const asign = f.pago?.asignadoA ?? f.asignacionSugerida ?? f.concepto?.asignadoDefault ?? 'ambos'
                 return (
                   <div key={f.key} className="flex items-center gap-3 border-t border-line py-3 first:border-0">
                     <Sigla categoria={f.categoria} />
@@ -129,6 +129,7 @@ export default function Inicio() {
 function fakePago(f: FilaMes, anio: number, mes: number, monto: number) {
   return {
     id: f.key, conceptoId: f.concepto?.id ?? null, nombre: f.nombre, categoria: f.categoria, tipo: f.tipo, anio, mes,
-    monto, asignadoA: f.concepto?.asignadoDefault ?? 'ambos' as const, pagado: false, fechaPago: null, nota: '',
+    monto, asignadoA: f.asignacionSugerida ?? f.concepto?.asignadoDefault ?? 'ambos' as const, pagado: false, fechaPago: null, nota: '',
+    asignacionManual: false,
   }
 }

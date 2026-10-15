@@ -40,6 +40,10 @@ export interface Concepto {
   mesesCuotaDoble: number[]
   nota: string
   activo: boolean
+  /** Primer mes (YYYY-MM) en que aplica. null = desde siempre. */
+  desde: string | null
+  /** Último mes (YYYY-MM), ej. la última cuota. Después deja de aparecer. null = sin fin. */
+  hasta: string | null
 }
 
 export interface Pago {
@@ -55,10 +59,14 @@ export interface Pago {
   pagado: boolean
   fechaPago: string | null
   nota: string
+  /** true si alguien eligió a mano a quién se asigna: la asignación automática no lo mueve. */
+  asignacionManual: boolean
 }
 
 export interface Config {
   monedaBase: string
+  /** Reparte los gastos recurrentes completos entre las dos personas según su % de ingreso. */
+  asignacionAuto: boolean
 }
 
 /** Fila del mes: un pago registrado o un concepto recurrente aún sin registrar. */
@@ -72,6 +80,8 @@ export interface FilaMes {
   montoSugerido: number | null
   esCuotaDoble: boolean
   diaVencimiento: number | null
+  /** Con asignación automática: a quién le toca este recurrente (si no está fijado). */
+  asignacionSugerida: PersonaId | null
 }
 
 export interface EstadoMes {
@@ -80,6 +90,8 @@ export interface EstadoMes {
   config: Config
   personas: [Persona, Persona]
   porcentaje1: number
+  /** Recurrentes de meses anteriores del año: cuánto de más (+) o de menos (−) cargó la persona 1. */
+  arrastre1: number
   filas: FilaMes[]
   ocasionales: Concepto[]
 }

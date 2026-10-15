@@ -51,6 +51,10 @@ export const v = {
     if (!Array.isArray(x)) return []
     return [...new Set(x.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 12))].sort((a, b) => a - b)
   },
+  periodoOpcional(x: unknown, campo: string): string | null {
+    if (x === null || x === undefined || x === '') return null
+    return typeof x === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(x) ? x : falla(`${campo} inválido (YYYY-MM)`)
+  },
   periodo(x: unknown): string {
     return typeof x === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(x) ? x : falla('Mes de inicio inválido (YYYY-MM)')
   },
@@ -82,5 +86,13 @@ export function leerConcepto(b: Record<string, unknown>) {
     mesesCuotaDoble: v.meses(b.mesesCuotaDoble),
     nota: v.texto(b.nota, 'Nota', 200, false),
     activo: b.activo !== false,
+    ...rangoMeses(b),
   }
+}
+
+function rangoMeses(b: Record<string, unknown>) {
+  const desde = v.periodoOpcional(b.desde, 'Mes de inicio')
+  const hasta = v.periodoOpcional(b.hasta, 'Último mes')
+  if (desde && hasta && hasta < desde) throw new ErrorValidacion('El último mes no puede ser anterior al de inicio')
+  return { desde, hasta }
 }

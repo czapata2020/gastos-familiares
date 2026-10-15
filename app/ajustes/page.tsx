@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Download, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { Asignacion, Categoria, Concepto, Config, Persona, Reparto, TipoConcepto } from '@/types'
 import { api, dinero, parseMonto, useDatos } from '@/lib/cliente'
-import { MESES, MESES_CORTO, porcentajePersona1 } from '@/lib/reparto'
+import { conceptoFinalizado, MESES, MESES_CORTO, porcentajePersona1 } from '@/lib/reparto'
 import { CATEGORIAS, MONEDAS, nombreCategoria } from '@/lib/categorias'
 import {
   BarraReparto, btnPrimario, btnSecundario, Cargando, Chips, Encabezado, Hoja, inputCls, nombreCorto, Seccion, Sigla, Tarjeta, useAviso,
@@ -30,8 +30,8 @@ export default function AjustesPage() {
       {nodo}
       <div className="grid gap-6">
         <SeccionReparto repartos={rep.data} personas={personas} config={config}
-          onCambio={async () => { await rep.recargar() }} aviso={aviso} />
-        <SeccionConceptos conceptos={con.data} personas={personas} moneda={config.monedaBase}
+          onCambio={async () => { await rep.recargar() }} onConfig={async () => { await aj.recargar() }} aviso={aviso} />
+        <SeccionConceptos conceptos={con.data} personas={personas} moneda={config.monedaBase} auto={config.asignacionAuto}
           onCambio={async () => { await con.recargar() }} aviso={aviso} />
         <SeccionHogar ajustes={aj.data} onCambio={async () => { await aj.recargar() }} aviso={aviso} />
         <SeccionNotificaciones aviso={aviso} />
@@ -49,9 +49,17 @@ export default function AjustesPage() {
 
 // ── Reparto por salario ───────────────────────────────────────────────────────
 
-function SeccionReparto({ repartos, personas, config, onCambio, aviso }: {
-  repartos: Reparto[]; personas: [Persona, Persona]; config: Config; onCambio: () => Promise<void>; aviso: (m: string, e?: boolean) => void
+function SeccionReparto({ repartos, personas, config, onCambio, onConfig, aviso }: {
+  repartos: Reparto[]; personas: [Persona, Persona]; config: Config; onCambio: () => Promise<void>
+  onConfig: () => Promise<void>; aviso: (m: string, e?: boolean) => void
 }) {
+  async function alternarAuto() {
+    try {
+      await api('/api/ajustes', 'PUT', { asignacionAuto: !config.asignacionAuto })
+      await onConfig()
+      aviso(config.asignacionAuto ? 'Asignación automática desactivada' : 'Asignación automática activada')
+    } catch (e) { aviso((e as Error).message, true) }
+  }
   const [editando, setEditando] = useState<Partial<Reparto> | null>(null)
   const hoy = new Date()
   const n1 = nombreCorto(personas[0]), n2 = nombreCorto(personas[1])
@@ -61,20 +69,30 @@ function SeccionReparto({ repartos, personas, config, onCambio, aviso }: {
   }
 
   return (
-    <Seccion titulo="Reparto por salario" extra="“Ambos” se divide con este %">
+    <Seccion titulo="Reparto por salario" extra="según el ingreso de cada uno">
+      <Tarjeta className="flex items-center justify-between gap-4 text-sm">
+        <div className="min-w-0">
+          <p className="font-semibold">Asignación automática</p>
+          <p className="text-ink-3">Reparte cada gasto recurrente completo a una persona para acercarse a este %. Los ocasionales se asignan a mano.</p>
+        </div>
+        <button type="button" role="switch" aria-checked={config.asignacionAuto} aria-label="Asignación automática" onClick={alternarAuto}
+          className={`relative h-7 w-12 shrink-0 rounded-full transition ${config.asignacionAuto ? 'bg-accent' : 'bg-line'}`}>
+          <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-surface shadow transition-all ${config.asignacionAuto ? 'left-[22px]' : 'left-0.5'}`} />
+        </button>
+      </Tarjeta>
       <Tarjeta className="grid gap-1 !py-2">
         {repartos.map((r, i) => {
           const p1 = porcentajePersona1(r, config.monedaBase)
           return (
             <div key={r.id} className="grid gap-2 border-t border-line py-3 first:border-0">
               <div className="flex items-center justify-between gap-2">
-                <div>
+                <div className="min-w-0">
                   <p className="font-semibold">{i === 0 ? 'Vigente desde' : 'Desde'} {fmtPeriodo(r.desde)}</p>
                   <p className="num text-xs text-ink-3">
                     {r.porcentajeManual != null ? 'Porcentaje manual' : `${n1} ${dinero(r.salario1, r.moneda1)} · ${n2} ${dinero(r.salario2, r.moneda2)}${r.moneda1 !== r.moneda2 ? ` · TC ${r.tipoCambio}` : ''}`}
                   </p>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex shrink-0 gap-1">
                   <button type="button" aria-label="Editar periodo" onClick={() => setEditando(r)} className="grid h-9 w-9 place-items-center rounded-full text-ink-3 hover:bg-surface-2"><Pencil className="h-4 w-4" /></button>
                   {repartos.length > 1 && <button type="button" aria-label="Eliminar periodo" onClick={() => borrar(r.id)} className="grid h-9 w-9 place-items-center rounded-full text-ink-3 hover:text-bad"><Trash2 className="h-4 w-4" /></button>}
                 </div>
@@ -180,17 +198,19 @@ const TIPOS: { id: TipoConcepto; nombre: string; ayuda: string }[] = [
   { id: 'ocasional', nombre: 'Frecuente', ayuda: 'No es mensual; aparece como atajo al agregar un gasto ocasional.' },
 ]
 
-function SeccionConceptos({ conceptos, personas, moneda, onCambio, aviso }: {
-  conceptos: Concepto[]; personas: [Persona, Persona]; moneda: string; onCambio: () => Promise<void>; aviso: (m: string, e?: boolean) => void
+function SeccionConceptos({ conceptos, personas, moneda, auto, onCambio, aviso }: {
+  conceptos: Concepto[]; personas: [Persona, Persona]; moneda: string; auto: boolean; onCambio: () => Promise<void>; aviso: (m: string, e?: boolean) => void
 }) {
   const [editando, setEditando] = useState<Partial<Concepto> | null>(null)
   const [verArchivados, setVerArchivados] = useState(false)
-  const visibles = conceptos.filter(c => verArchivados || c.activo)
-  const archivados = conceptos.filter(c => !c.activo).length
-  const quien = (a: Asignacion) => a === 'ambos' ? 'Ambos' : nombreCorto(personas[a === '1' ? 0 : 1])
+  // Finalizados: recurrentes cuya última cuota ya pasó. Se ocultan junto con los archivados.
+  const vigente = (c: Concepto) => c.activo && !conceptoFinalizado(c)
+  const visibles = conceptos.filter(c => verArchivados || vigente(c))
+  const archivados = conceptos.filter(c => !vigente(c)).length
+  const quien = (a: Asignacion) => a === 'ambos' ? (auto ? 'Automático' : 'Ambos') : nombreCorto(personas[a === '1' ? 0 : 1])
 
   return (
-    <Seccion titulo="Gastos recurrentes" extra={`${conceptos.filter(c => c.activo).length} activos`}>
+    <Seccion titulo="Gastos recurrentes" extra={`${conceptos.filter(vigente).length} activos`}>
       {TIPOS.map(t => {
         const lista = visibles.filter(c => c.tipo === t.id)
         if (!lista.length) return null
@@ -199,13 +219,14 @@ function SeccionConceptos({ conceptos, personas, moneda, onCambio, aviso }: {
             <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-ink-3">{t.id === 'ocasional' ? 'Frecuentes' : t.nombre + 's'}</p>
             {lista.map(c => (
               <button key={c.id} type="button" onClick={() => setEditando(c)}
-                className={`flex w-full items-center gap-3 border-t border-line py-3 text-left first-of-type:border-0 ${c.activo ? '' : 'opacity-50'}`}>
+                className={`flex w-full items-center gap-3 border-t border-line py-3 text-left first-of-type:border-0 ${vigente(c) ? '' : 'opacity-50'}`}>
                 <Sigla categoria={c.categoria} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{c.nombre}{!c.activo && ' (archivado)'}</p>
+                  <p className="truncate font-semibold">{c.nombre}{!c.activo ? ' (archivado)' : conceptoFinalizado(c) ? ' (finalizado)' : ''}</p>
                   <p className="truncate text-xs text-ink-3">
                     {nombreCategoria(c.categoria)} · {quien(c.asignadoDefault)}{c.diaVencimiento ? ` · vence día ${c.diaVencimiento}` : ''}
                     {c.mesesActivos.length ? ` · ${c.mesesActivos.map(m => MESES_CORTO[m - 1]).join(', ')}` : ''}
+                    {c.hasta ? ` · hasta ${fmtPeriodo(c.hasta)}` : ''}
                   </p>
                 </div>
                 <span className="num font-semibold">{c.montoRef != null ? dinero(c.montoRef, moneda) : '—'}</span>
@@ -218,16 +239,16 @@ function SeccionConceptos({ conceptos, personas, moneda, onCambio, aviso }: {
         <button type="button" className={btnSecundario} onClick={() => setEditando({ tipo: 'fijo', categoria: 'hogar', asignadoDefault: 'ambos', mesesActivos: [], mesesCuotaDoble: [], activo: true })}>
           <Plus className="h-4 w-4" />Nuevo gasto
         </button>
-        {archivados > 0 && <button type="button" className="px-2 text-sm font-semibold text-ink-3" onClick={() => setVerArchivados(v => !v)}>{verArchivados ? 'Ocultar' : 'Ver'} archivados ({archivados})</button>}
+        {archivados > 0 && <button type="button" className="px-2 text-sm font-semibold text-ink-3" onClick={() => setVerArchivados(v => !v)}>{verArchivados ? 'Ocultar' : 'Ver'} finalizados y archivados ({archivados})</button>}
       </div>
-      <HojaConcepto valor={editando} onCerrar={() => setEditando(null)} personas={personas} moneda={moneda}
+      <HojaConcepto valor={editando} onCerrar={() => setEditando(null)} personas={personas} moneda={moneda} auto={auto}
         onGuardado={async msg => { setEditando(null); await onCambio(); aviso(msg) }} aviso={aviso} />
     </Seccion>
   )
 }
 
-function HojaConcepto({ valor, onCerrar, personas, moneda, onGuardado, aviso }: {
-  valor: Partial<Concepto> | null; onCerrar: () => void; personas: [Persona, Persona]; moneda: string
+function HojaConcepto({ valor, onCerrar, personas, moneda, auto, onGuardado, aviso }: {
+  valor: Partial<Concepto> | null; onCerrar: () => void; personas: [Persona, Persona]; moneda: string; auto: boolean
   onGuardado: (msg: string) => Promise<void>; aviso: (m: string, e?: boolean) => void
 }) {
   const [f, setF] = useState<Partial<Concepto> & { montoTxt: string; diaTxt: string }>({ montoTxt: '', diaTxt: '' })
@@ -286,12 +307,28 @@ function HojaConcepto({ valor, onCerrar, personas, moneda, onGuardado, aviso }: 
         </div>
         <div className="grid gap-1.5 text-sm font-semibold text-ink-2">Quién paga normalmente
           <Chips valor={f.asignadoDefault ?? 'ambos'} personas={personas} onChange={a => setF({ ...f, asignadoDefault: a })} />
+          {auto && tipo !== 'ocasional' && (
+            <span className="text-xs font-normal text-ink-3">
+              {(f.asignadoDefault ?? 'ambos') === 'ambos'
+                ? '“Ambos” = automático: cada mes se asigna completo a quien corresponda según el ingreso.'
+                : 'Siempre lo paga esta persona; la asignación automática lo cuenta pero no lo mueve.'}
+            </span>
+          )}
         </div>
         {tipo !== 'ocasional' && (
           <>
             <label className={labelCls}>Día de vencimiento
               <input id="co-dia" inputMode="numeric" className={`${inputCls} num w-28`} value={f.diaTxt} onChange={e => setF({ ...f, diaTxt: e.target.value.replace(/\D/g, '').slice(0, 2) })} placeholder="1-31" />
             </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className={labelCls}>Primer mes
+                <input id="co-desde" type="month" className={inputCls} value={f.desde ?? ''} onChange={e => setF({ ...f, desde: e.target.value || null })} />
+              </label>
+              <label className={labelCls}>Último mes
+                <input id="co-hasta" type="month" className={inputCls} value={f.hasta ?? ''} onChange={e => setF({ ...f, hasta: e.target.value || null })} />
+              </label>
+            </div>
+            <p className="-mt-2 text-xs text-ink-3">Opcionales. Ej. la última cuota de un préstamo: después de ese mes deja de aparecer y pasa a “finalizados”, sin perder lo ya registrado.</p>
             <SelectorMeses titulo="Meses en que aplica" ayuda="Sin marcar = todos los meses." valor={f.mesesActivos ?? []} onToggle={m => alternar('mesesActivos', m)} />
             <SelectorMeses titulo="Meses con cuota doble" ayuda="El monto se duplica esos meses (gratificaciones, julio y diciembre)." valor={f.mesesCuotaDoble ?? []} onToggle={m => alternar('mesesCuotaDoble', m)} />
           </>
@@ -363,7 +400,7 @@ function SeccionHogar({ ajustes, onCambio, aviso }: { ajustes: Ajustes; onCambio
             </div>
           ))}
           <label className={`${labelCls} w-40`}>Moneda principal
-            <select id="pe-moneda" className={inputCls} value={f.config.monedaBase} onChange={e => setF({ ...f, config: { monedaBase: e.target.value } })}>
+            <select id="pe-moneda" className={inputCls} value={f.config.monedaBase} onChange={e => setF({ ...f, config: { ...f.config, monedaBase: e.target.value } })}>
               {MONEDAS.map(m => <option key={m}>{m}</option>)}
             </select>
           </label>

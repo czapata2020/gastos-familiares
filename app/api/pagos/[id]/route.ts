@@ -12,6 +12,7 @@ export const PATCH = handler(async (req: Request, { params }: Ctx) => {
     ...(b.pagado !== undefined && { pagado: b.pagado === true }),
     ...(b.nota !== undefined && { nota: v.texto(b.nota, 'Nota', 200, false) }),
     ...(b.nombre !== undefined && { nombre: v.texto(b.nombre, 'Nombre') }),
+    ...(b.automatico === true && { automatico: true }),
   })
 })
 
