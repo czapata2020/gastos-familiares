@@ -1,32 +1,20 @@
 import type { Config } from 'tailwindcss'
 
+const token = (name: string) => `rgb(var(--${name}) / <alpha-value>)`
+
 const config: Config = {
-  content: [
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
+  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
-      colors: {
-        brand: {
-          50:  '#eef4f7',
-          100: '#cfe3ec',
-          400: '#5a8fa8',
-          500: '#35627A',
-          600: '#2c5268',
-          700: '#1e3a4a',
-        },
-        terracotta: {
-          100: '#f4e0de',
-          300: '#d4938c',
-          500: '#B46258',
-          700: '#8f4a41',
-        },
-        blush:    '#E5AEA9',
-        lavender: '#A6A9D0',
-        sage:     '#8E9A98',
-        ash:      '#F5F5F5',
+      colors: Object.fromEntries(
+        ['bg', 'surface', 'surface-2', 'ink', 'ink-2', 'ink-3', 'line', 'accent', 'accent-ink', 'accent-soft',
+          'p1', 'p2', 'good', 'warn', 'bad'].map(n => [n, token(n)]),
+      ),
+      fontFamily: {
+        display: ['var(--font-display)', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-body)', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       },
+      borderRadius: { xl2: '1.125rem' },
     },
   },
   plugins: [],

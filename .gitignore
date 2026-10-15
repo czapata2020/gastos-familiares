@@ -32,3 +32,6 @@ next-env.d.ts
 
 # macos
 .DS_Store
+
+# datos locales
+data/

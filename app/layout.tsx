@@ -1,24 +1,35 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
+import { Bricolage_Grotesque, Figtree } from 'next/font/google'
+import { Suspense } from 'react'
 import './globals.css'
-import SidebarLayout from '@/components/layout/SidebarLayout'
-import { auth } from '@/auth'
+import AppShell from '@/components/AppShell'
+
+const display = Bricolage_Grotesque({ subsets: ['latin'], weight: ['500', '700'], variable: '--font-display' })
+const body = Figtree({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-body' })
 
 export const metadata: Metadata = {
   title: 'Gastos Familiares',
-  description: 'Gestión de gastos compartidos',
+  description: 'Gastos compartidos del hogar, repartidos por salario',
+  appleWebApp: { capable: true, title: 'Gastos', statusBarStyle: 'default' },
 }
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth()
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f3f5f4' },
+    { media: '(prefers-color-scheme: dark)', color: '#0c1110' },
+  ],
+}
 
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
-      <body>
-        {session?.user ? (
-          <SidebarLayout user={session.user}>{children}</SidebarLayout>
-        ) : (
-          children
-        )}
+    <html lang="es" className={`${display.variable} ${body.variable}`}>
+      <body className="font-sans">
+        <Suspense>
+          <AppShell>{children}</AppShell>
+        </Suspense>
       </body>
     </html>
   )

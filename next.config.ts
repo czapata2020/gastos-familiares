@@ -2,7 +2,9 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  devIndicators: false
+  devIndicators: false,
+  serverExternalPackages: ['better-sqlite3'],
+  poweredByHeader: false,
 }
 
 export default nextConfig
