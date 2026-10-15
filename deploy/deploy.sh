@@ -12,10 +12,10 @@ IMG="ghcr.io/czapata2020/gastos-familiares-app"
 ENGINE="$(command -v docker || command -v podman)"
 SSH="ssh -o StrictHostKeyChecking=accept-new root@$HOST"
 
-echo "[1/4] Construyendo $IMG:$TAG…"
+echo "[1/4] Construyendo ${IMG}:${TAG}…"
 $ENGINE build --platform linux/amd64 -t "$IMG:$TAG" .
 
-echo "[2/4] Subiendo imagen al Droplet…"
+echo "[2/4] Subiendo imagen al Droplet..."
 $ENGINE save "$IMG:$TAG" | gzip -1 | $SSH 'gunzip | docker load -q'
 
 echo "[3/4] Configuración…"
