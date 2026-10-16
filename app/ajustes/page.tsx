@@ -90,7 +90,7 @@ function SeccionReparto({ repartos, personas, config, onCambio, onConfig, aviso 
                 <div className="min-w-0">
                   <p className="font-semibold">{i === 0 ? 'Vigente desde' : 'Desde'} {fmtPeriodo(r.desde)}</p>
                   <p className="num text-xs text-ink-3">
-                    {r.porcentajeManual != null ? 'Porcentaje manual' : `${n1} ${dinero(r.salario1, r.moneda1)} · ${n2} ${dinero(r.salario2, r.moneda2)}${r.moneda1 !== r.moneda2 ? ` · TC ${r.tipoCambio}` : ''}`}
+                    {r.porcentajeManual != null ? 'Porcentaje manual' : `${n1} ${dinero(r.salario1, r.moneda1)} · ${n2} ${dinero(r.salario2, r.moneda2)} ${r.periodo === 'anual' ? 'al año' : 'al mes'}${r.moneda1 !== r.moneda2 ? ` · TC ${r.tipoCambio}` : ''}`}
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-1">
@@ -119,19 +119,21 @@ function HojaReparto({ valor, onCerrar, personas, config, onGuardado, aviso }: {
   valor: Partial<Reparto> | null; onCerrar: () => void; personas: [Persona, Persona]; config: Config
   onGuardado: () => Promise<void>; aviso: (m: string, e?: boolean) => void
 }) {
-  const [f, setF] = useState({ desde: '', salario1: '', moneda1: 'PEN', salario2: '', moneda2: 'PEN', tipoCambio: '1', manual: '', usarManual: false })
+  const [f, setF] = useState({ desde: '', salario1: '', moneda1: 'PEN', salario2: '', moneda2: 'PEN', tipoCambio: '1', manual: '', usarManual: false, periodo: 'mensual' as Reparto['periodo'] })
   useEffect(() => {
     if (!valor) return
     setF({
       desde: valor.desde ?? '', salario1: String(valor.salario1 ?? ''), moneda1: valor.moneda1 ?? config.monedaBase,
       salario2: String(valor.salario2 ?? ''), moneda2: valor.moneda2 ?? config.monedaBase, tipoCambio: String(valor.tipoCambio ?? 1),
       manual: valor.porcentajeManual != null ? String(valor.porcentajeManual) : '', usarManual: valor.porcentajeManual != null,
+      periodo: valor.periodo ?? 'mensual',
     })
   }, [valor, config.monedaBase])
 
   const previa: Reparto = {
     id: '', desde: f.desde, salario1: parseMonto(f.salario1) ?? 0, moneda1: f.moneda1, salario2: parseMonto(f.salario2) ?? 0,
     moneda2: f.moneda2, tipoCambio: parseMonto(f.tipoCambio) ?? 1, porcentajeManual: f.usarManual ? parseMonto(f.manual) : null,
+    periodo: f.periodo,
   }
   const p1 = porcentajePersona1(previa, config.monedaBase)
   const necesitaTC = f.moneda1 !== config.monedaBase || f.moneda2 !== config.monedaBase
@@ -160,9 +162,18 @@ function HojaReparto({ valor, onCerrar, personas, config, onGuardado, aviso }: {
           </label>
         ) : (
           <>
+            <div className="grid gap-1.5">
+              <span className="text-sm font-semibold text-ink-2">Los salarios son</span>
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1">
+                {(['mensual', 'anual'] as const).map(p => (
+                  <button key={p} type="button" onClick={() => setF({ ...f, periodo: p })}
+                    className={`rounded-lg py-2 text-sm font-semibold ${f.periodo === p ? 'bg-surface shadow-sm' : 'text-ink-3'}`}>{p === 'mensual' ? 'Mensuales' : 'Anuales'}</button>
+                ))}
+              </div>
+            </div>
             {([1, 2] as const).map(n => (
               <div key={n} className="grid grid-cols-[1fr_96px] gap-2">
-                <label className={labelCls}>Salario de {nombreCorto(personas[n - 1])}
+                <label className={labelCls}>Salario {f.periodo === 'anual' ? 'anual' : 'mensual'} de {nombreCorto(personas[n - 1])}
                   <input id={`rp-sal${n}`} inputMode="decimal" className={`${inputCls} num`} value={n === 1 ? f.salario1 : f.salario2}
                     onChange={e => setF({ ...f, [`salario${n}`]: e.target.value })} placeholder="0" />
                 </label>
@@ -178,7 +189,7 @@ function HojaReparto({ valor, onCerrar, personas, config, onGuardado, aviso }: {
                 <input id="rp-tc" inputMode="decimal" className={`${inputCls} num`} value={f.tipoCambio} onChange={e => setF({ ...f, tipoCambio: e.target.value })} />
               </label>
             )}
-            <p className="text-xs text-ink-3">Usa el mismo criterio para ambos (los dos netos o los dos brutos, mensual o anual).</p>
+            <p className="text-xs text-ink-3">Usa el mismo criterio para los dos (ambos netos o ambos brutos). El % sale igual con salarios mensuales o anuales.</p>
           </>
         )}
         <div className="grid gap-1.5 rounded-xl bg-surface-2 p-3">

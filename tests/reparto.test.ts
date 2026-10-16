@@ -4,7 +4,7 @@ import { armarFilas, asignacionAutomatica, conceptoFinalizado, dividir, estadoFi
 import { calcularMetricas } from '@/lib/metricas'
 
 const rep = (desde: string, s1: number, s2: number, extra: Partial<Reparto> = {}): Reparto => ({
-  id: desde, desde, salario1: s1, moneda1: 'PEN', salario2: s2, moneda2: 'PEN', tipoCambio: 1, porcentajeManual: null, ...extra,
+  id: desde, desde, salario1: s1, moneda1: 'PEN', salario2: s2, moneda2: 'PEN', tipoCambio: 1, porcentajeManual: null, periodo: 'mensual', ...extra,
 })
 const concepto = (id: string, extra: Partial<Concepto> = {}): Concepto => ({
   id, nombre: id, categoria: 'hogar', tipo: 'fijo', montoRef: 100, asignadoDefault: 'ambos', diaVencimiento: null,

@@ -160,6 +160,7 @@ function agregarColumnas(db: Database.Database) {
   const con = columnas('conceptos')
   if (!con.has('desde')) db.exec('ALTER TABLE conceptos ADD COLUMN desde TEXT')   // YYYY-MM
   if (!con.has('hasta')) db.exec('ALTER TABLE conceptos ADD COLUMN hasta TEXT')   // YYYY-MM
+  if (!columnas('repartos').has('periodo')) db.exec("ALTER TABLE repartos ADD COLUMN periodo TEXT NOT NULL DEFAULT 'mensual'")
   if (!columnas('pagos').has('asignacion_manual')) {
     db.exec('ALTER TABLE pagos ADD COLUMN asignacion_manual INTEGER NOT NULL DEFAULT 0')
     // Lo registrado antes de existir la asignación automática lo eligieron ustedes: se respeta.
