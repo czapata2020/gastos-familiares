@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Download, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Download, FileSpreadsheet, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import type { Asignacion, Categoria, Concepto, Config, Persona, Reparto, TipoConcepto } from '@/types'
 import { api, dinero, parseMonto, useDatos } from '@/lib/cliente'
 import { conceptoFinalizado, MESES, MESES_CORTO, porcentajePersona1 } from '@/lib/reparto'
@@ -35,6 +35,7 @@ export default function AjustesPage() {
           onCambio={async () => { await con.recargar() }} aviso={aviso} />
         <SeccionHogar ajustes={aj.data} onCambio={async () => { await aj.recargar() }} aviso={aviso} />
         <SeccionNotificaciones aviso={aviso} />
+        <SeccionPlantilla aviso={aviso} moneda={config.monedaBase} />
         <Seccion titulo="Datos">
           <Tarjeta className="grid gap-3 text-sm">
             <a href="/api/exportar" className={`${btnSecundario} justify-self-start`}><Download className="h-4 w-4" />Descargar todo en CSV (Excel)</a>
@@ -450,6 +451,121 @@ function SeccionNotificaciones({ aviso }: { aviso: (m: string, e?: boolean) => v
         <p className="text-ink-3">Se envían a: {data.destinatarios.join(', ') || 'nadie (agrega correos en Hogar)'}</p>
         {!data.smtpConfigurado && <p className="rounded-xl bg-warn/10 px-3 py-2 text-warn">Falta configurar el servidor de correo (SMTP) en el servidor. Mientras tanto no se envía nada.</p>}
         {data.smtpConfigurado && <button type="button" className={`${btnSecundario} justify-self-start`} disabled={probando} onClick={probar}>Enviar correo de prueba</button>}
+      </Tarjeta>
+    </Seccion>
+  )
+}
+
+// ── Carga masiva con plantilla Excel ─────────────────────────────────────────
+
+interface PlanImport {
+  filas: { fila: number; accion: 'crear' | 'actualizar'; nombre: string; anio: number; mes: number; monto: number; aviso: string | null }[]
+  errores: { fila: number; mensaje: string }[]
+  omitidas: number
+  resumen: { crear: number; actualizar: number; total: number; meses: string[] }
+}
+
+function SeccionPlantilla({ aviso, moneda }: { aviso: (m: string, e?: boolean) => void; moneda: string }) {
+  const hoy = new Date()
+  const [anio, setAnio] = useState(hoy.getFullYear())
+  const [desde, setDesde] = useState(1)
+  const [hasta, setHasta] = useState(Math.max(1, hoy.getMonth()))  // hasta el mes anterior
+  const [archivo, setArchivo] = useState<File | null>(null)
+  const [plan, setPlan] = useState<PlanImport | null>(null)
+  const [ocupado, setOcupado] = useState(false)
+  const anios = [hoy.getFullYear() + 1, hoy.getFullYear(), hoy.getFullYear() - 1, hoy.getFullYear() - 2, hoy.getFullYear() - 3]
+
+  async function subir(modo: 'previsualizar' | 'aplicar', f = archivo) {
+    if (!f) return
+    setOcupado(true)
+    try {
+      const fd = new FormData()
+      fd.append('archivo', f)
+      fd.append('modo', modo)
+      const res = await fetch('/api/importar', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`)
+      if (modo === 'previsualizar') setPlan(data)
+      else {
+        aviso(`Importado: ${data.creados} nuevos, ${data.actualizados} actualizados`)
+        setPlan(null); setArchivo(null)
+      }
+    } catch (e) { aviso((e as Error).message, true) } finally { setOcupado(false) }
+  }
+
+  return (
+    <Seccion titulo="Cargar gastos desde Excel" extra="para completar meses pasados">
+      <Tarjeta className="grid gap-4 text-sm">
+        <div className="grid gap-2">
+          <p className="font-semibold">1. Descarga la plantilla</p>
+          <p className="text-ink-3">Viene con lo ya registrado y una fila por cada gasto recurrente que falta, con su monto de referencia.</p>
+          <div className="grid grid-cols-3 gap-2">
+            <label className={labelCls}>Año
+              <select id="pl-anio" className={inputCls} value={anio} onChange={e => setAnio(Number(e.target.value))}>
+                {anios.map(a => <option key={a}>{a}</option>)}
+              </select>
+            </label>
+            <label className={labelCls}>Desde
+              <select id="pl-desde" className={inputCls} value={desde} onChange={e => { const v = Number(e.target.value); setDesde(v); if (hasta < v) setHasta(v) }}>
+                {MESES.map((m, i) => <option key={m} value={i + 1}>{m.slice(0, 3)}</option>)}
+              </select>
+            </label>
+            <label className={labelCls}>Hasta
+              <select id="pl-hasta" className={inputCls} value={hasta} onChange={e => setHasta(Number(e.target.value))}>
+                {MESES.map((m, i) => <option key={m} value={i + 1} disabled={i + 1 < desde}>{m.slice(0, 3)}</option>)}
+              </select>
+            </label>
+          </div>
+          <a href={`/api/plantilla?anio=${anio}&desde=${desde}&hasta=${hasta}`} className={`${btnSecundario} justify-self-start`}>
+            <FileSpreadsheet className="h-4 w-4" />Descargar plantilla (.xlsx)
+          </a>
+        </div>
+
+        <div className="grid gap-2 border-t border-line pt-4">
+          <p className="font-semibold">2. Llénala y súbela</p>
+          <p className="text-ink-3">Funciona con Excel o Google Sheets (descárgala como .xlsx). Antes de guardar verás qué se va a crear o actualizar.</p>
+          <label className={`${btnSecundario} cursor-pointer justify-self-start`}>
+            <Upload className="h-4 w-4" />{archivo ? archivo.name : 'Elegir archivo'}
+            <input id="pl-archivo" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only"
+              onChange={e => { const f = e.target.files?.[0] ?? null; setArchivo(f); setPlan(null); if (f) void subir('previsualizar', f); e.target.value = '' }} />
+          </label>
+          {ocupado && <p className="text-ink-3">Revisando…</p>}
+        </div>
+
+        {plan && (
+          <div className="grid gap-3 rounded-xl bg-surface-2 p-3">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div><p className="num font-display text-xl font-bold">{plan.resumen.crear}</p><p className="text-xs text-ink-3">nuevos</p></div>
+              <div><p className="num font-display text-xl font-bold">{plan.resumen.actualizar}</p><p className="text-xs text-ink-3">se actualizan</p></div>
+              <div><p className={`num font-display text-xl font-bold ${plan.errores.length ? 'text-bad' : ''}`}>{plan.errores.length}</p><p className="text-xs text-ink-3">con error</p></div>
+            </div>
+            <p className="text-ink-2">
+              Total {dinero(plan.resumen.total, moneda)} en {plan.resumen.meses.join(', ') || 'ningún mes'}.
+              {plan.omitidas > 0 && ` ${plan.omitidas} filas sin monto se ignoran.`}
+            </p>
+            {plan.errores.length > 0 && (
+              <div className="grid gap-1 rounded-lg bg-bad/10 p-2.5 text-bad">
+                <p className="font-semibold">Corrige estas filas y vuelve a subir el archivo:</p>
+                {plan.errores.slice(0, 15).map(e => <p key={e.fila}>Fila {e.fila}: {e.mensaje}</p>)}
+                {plan.errores.length > 15 && <p>…y {plan.errores.length - 15} más</p>}
+              </div>
+            )}
+            {plan.filas.some(f => f.aviso) && (
+              <details className="text-ink-2">
+                <summary className="cursor-pointer font-semibold">{plan.filas.filter(f => f.aviso).length} avisos (no bloquean)</summary>
+                <div className="mt-1 grid gap-0.5">
+                  {plan.filas.filter(f => f.aviso).slice(0, 30).map(f => <p key={f.fila}>Fila {f.fila} · {f.nombre}: {f.aviso}</p>)}
+                </div>
+              </details>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={btnPrimario} disabled={ocupado || plan.errores.length > 0 || plan.filas.length === 0} onClick={() => subir('aplicar')}>
+                Importar {plan.filas.length} filas
+              </button>
+              <button type="button" className={btnSecundario} onClick={() => { setPlan(null); setArchivo(null) }}>Cancelar</button>
+            </div>
+          </div>
+        )}
       </Tarjeta>
     </Seccion>
   )
