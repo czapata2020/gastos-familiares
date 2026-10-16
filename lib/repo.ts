@@ -35,19 +35,53 @@ export function setConfig(c: Partial<Config>) {
   if (c.asignacionAuto !== undefined) up.run('asignacion_auto', c.asignacionAuto ? '1' : '0')
 }
 export function getPersonas(): [Persona, Persona] {
-  const rows = getDb().prepare('SELECT * FROM personas ORDER BY id').all() as Persona[]
+  const rows = (getDb().prepare('SELECT * FROM personas ORDER BY id').all() as Row[]).map(r => ({
+    id: r.id, nombre: r.nombre, email: r.email, telefono: r.telefono ?? '', waUserId: r.wa_user_id ?? '',
+  }) as Persona)
   return [rows[0], rows[1]]
 }
-export function setPersona(p: Persona) {
+export function setPersona(p: Omit<Persona, 'waUserId'>) {
   getDb().prepare('UPDATE personas SET nombre = ?, email = ?, telefono = ? WHERE id = ?')
     .run(p.nombre.trim(), p.email.trim().toLowerCase(), soloDigitos(p.telefono ?? ''), p.id)
 }
 
 export const soloDigitos = (s: string) => s.replace(/\D/g, '')
 
-export function personaPorTelefono(waId: string): Persona | null {
-  const tel = soloDigitos(waId)
+/** El ID de WhatsApp (BSUID) tiene la forma "PE.123…": país, punto y alfanuméricos. */
+export const esUserId = (id: string) => /^[A-Z]{2}\.[A-Za-z0-9.]+$/.test(id)
+
+/** Quién escribe: por ID de WhatsApp (BSUID) si viene así, o por número de teléfono. */
+export function personaPorRemitente(remitente: string): Persona | null {
+  if (!remitente) return null
+  if (esUserId(remitente)) return getPersonas().find(p => p.waUserId === remitente) ?? null
+  const tel = soloDigitos(remitente)
   return getPersonas().find(p => p.telefono && p.telefono === tel) ?? null
+}
+/** @deprecated usar personaPorRemitente */
+export const personaPorTelefono = personaPorRemitente
+
+export function guardarWaUserId(personaId: string, userId: string) {
+  getDb().prepare('UPDATE personas SET wa_user_id = ? WHERE id = ?').run(userId, personaId)
+}
+
+/** Código de 6 dígitos, válido 15 minutos, para que una persona vincule su WhatsApp escribiendo "vincular <código>". */
+export function crearCodigoVinculo(personaId: string): string {
+  const db = getDb()
+  db.prepare("DELETE FROM wa_vinculos WHERE expira_en < datetime('now') OR persona_id = ?").run(personaId)
+  let codigo = ''
+  do { codigo = String(Math.floor(100000 + Math.random() * 900000)) } while (db.prepare('SELECT 1 FROM wa_vinculos WHERE codigo = ?').get(codigo))
+  db.prepare("INSERT INTO wa_vinculos (codigo, persona_id, expira_en) VALUES (?, ?, datetime('now', '+15 minutes'))").run(codigo, personaId)
+  return codigo
+}
+
+/** Usa un código: si es válido, vincula el ID de WhatsApp a la persona y lo consume. */
+export function usarCodigoVinculo(codigo: string, userId: string): Persona | null {
+  const db = getDb()
+  const fila = db.prepare("SELECT persona_id FROM wa_vinculos WHERE codigo = ? AND expira_en >= datetime('now')").get(codigo) as Row | undefined
+  if (!fila) return null
+  db.prepare('DELETE FROM wa_vinculos WHERE codigo = ?').run(codigo)
+  guardarWaUserId(fila.persona_id, userId)
+  return getPersonas().find(p => p.id === fila.persona_id) ?? null
 }
 
 // ── Repartos ──────────────────────────────────────────────────────────────────

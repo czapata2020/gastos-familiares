@@ -12,6 +12,8 @@ export interface Persona {
   email: string
   /** WhatsApp con código de país, solo dígitos (ej. 51987654321). */
   telefono: string
+  /** ID de WhatsApp de la persona para este negocio (BSUID, ej. "PE.1349…"); Meta lo envía en vez del número a quien usa nombre de usuario. */
+  waUserId: string
 }
 
 /** Salarios vigentes desde un mes (YYYY-MM). El último periodo con desde <= mes aplica. */

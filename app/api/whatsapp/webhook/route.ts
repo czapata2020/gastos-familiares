@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { procesarMensaje } from '@/lib/bot/bot'
-import { personaPorTelefono } from '@/lib/repo'
+import { guardarWaUserId, personaPorRemitente, usarCodigoVinculo } from '@/lib/repo'
 import { enviar, firmaValida } from '@/lib/whatsapp'
 
 /**
@@ -23,6 +23,7 @@ export function GET(req: Request) {
 interface MensajeWA {
   id: string
   from?: string
+  from_user_id?: string
   type: string
   text?: { body: string }
   interactive?: { button_reply?: { id: string } }
@@ -43,18 +44,26 @@ export async function POST(req: Request) {
   for (const v of valores) for (const m of v.messages ?? []) {
     // Meta reintenta si no respondemos rápido: cada mensaje se procesa una sola vez
     if (marcar.run(m.id).changes === 0) continue
-    // El número viene en "from"; si no, en el contacto que acompaña al mensaje
-    const remitente = m.from ?? v.contacts?.find(c => c.wa_id)?.wa_id ?? ''
-    if (!remitente) {
-      // Sin número no podemos saber quién es: dejamos registro de la forma del mensaje (sin contenido) para diagnosticar
-      console.warn('[whatsapp] mensaje sin número de teléfono', JSON.stringify({
-        claves: Object.keys(m), tipo: m.type,
-        contactos: (v.contacts ?? []).map(c => ({ claves: Object.keys(c), tieneWaId: !!c.wa_id, tieneUserId: !!c.user_id })),
-      }))
+    // Quién escribe: número de teléfono si Meta lo manda; si no, su ID de WhatsApp (BSUID)
+    const userId = m.from_user_id ?? v.contacts?.find(c => c.user_id)?.user_id ?? ''
+    const telefono = m.from ?? v.contacts?.find(c => c.wa_id)?.wa_id ?? ''
+    const remitente = telefono || userId
+    if (!remitente) { console.warn('[whatsapp] mensaje sin número ni ID de usuario'); continue }
+
+    let persona = personaPorRemitente(telefono) ?? personaPorRemitente(userId)
+    // Si llegó con número y con ID, guardamos el ID: así la reconocemos aunque Meta deje de mandar el número
+    if (persona && telefono && userId && persona.waUserId !== userId) guardarWaUserId(persona.id, userId)
+
+    if (!persona) {
+      // Única excepción para desconocidos: "vincular 123456" con un código generado en Ajustes → Hogar
+      const codigo = /^\s*vincular\s+(\d{6})\s*$/i.exec(m.text?.body ?? '')?.[1]
+      persona = codigo ? usarCodigoVinculo(codigo, userId || remitente) : null
+      if (!persona) { console.warn(`[whatsapp] remitente no autorizado (${userId ? 'ID' : 'número'} …${remitente.slice(-2)})`); continue }
+      try {
+        await enviar(remitente, { texto: `✓ Listo ${persona.nombre.split(' ')[0]}, tu WhatsApp quedó vinculado. Escribe *ayuda* para ver qué puedo hacer.` })
+      } catch (err) { console.error('[whatsapp]', err) }
       continue
     }
-    // Solo los teléfonos registrados en Ajustes → Hogar pueden usar el bot; al resto no se le responde
-    if (!personaPorTelefono(remitente)) { console.warn(`[whatsapp] número no autorizado (termina en ${remitente.slice(-2)})`); continue }
     m.from = remitente
     try {
       const boton = m.interactive?.button_reply?.id

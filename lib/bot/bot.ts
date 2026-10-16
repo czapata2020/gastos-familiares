@@ -2,7 +2,7 @@ import 'server-only'
 import type { Asignacion, Categoria, FilaMes, Persona, TipoConcepto } from '@/types'
 import type { Respuesta } from '@/lib/whatsapp'
 import { getDb, uid } from '@/lib/db'
-import { actualizarPago, crearPago, getEstadoMes, getPersonas, personaPorTelefono } from '@/lib/repo'
+import { actualizarPago, crearPago, getEstadoMes, getPersonas, personaPorRemitente } from '@/lib/repo'
 import { dividir, estadoFila, MESES } from '@/lib/reparto'
 import { interpretar, mejorCoincidencia, normalizar } from './interpretar'
 
@@ -51,7 +51,7 @@ const AYUDA = [
  * Números que no están en Ajustes → Hogar se ignoran (respuesta vacía).
  */
 export function procesarMensaje(waId: string, texto: string, boton?: string): Respuesta[] {
-  const persona = personaPorTelefono(waId)
+  const persona = personaPorRemitente(waId)
   if (!persona) return []
   const personas = getPersonas()
 
