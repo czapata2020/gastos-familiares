@@ -68,14 +68,14 @@ export function procesarMensaje(waId: string, texto: string, boton?: string): Re
     case 'pagar': return [marcarPagado(intencion.texto, anio, mes)]
     case 'registrar': {
       const quien = intencion.quien === 'yo' ? persona.id : intencion.quien
-      return [proponer(waId, intencion.texto, intencion.monto, quien, intencion.pagado, anio, mes, personas)]
+      return [proponer(waId, intencion.texto, intencion.monto, quien, intencion.pagado, anio, mes, personas, persona)]
     }
     default: return [{ texto: `No te entendí.\n\n${AYUDA}` }]
   }
 }
 
 function proponer(waId: string, escrito: string, monto: number, quien: Asignacion | null, pagado: boolean,
-  anio: number, mes: number, personas: [Persona, Persona]): Respuesta {
+  anio: number, mes: number, personas: [Persona, Persona], autor: Persona): Respuesta {
   const estado = getEstadoMes(anio, mes)
   const fila = mejorCoincidencia(escrito, estado.filas.filter(f => f.tipo !== 'ocasional'))
   const plantilla = fila ? null : mejorCoincidencia(escrito, estado.ocasionales)
@@ -88,11 +88,12 @@ function proponer(waId: string, escrito: string, monto: number, quien: Asignacio
       tipo: fila.tipo, anio, mes, monto, asignadoA: quien ?? auto, manual: quien != null, pagado,
     }
   } else {
-    // Gasto ocasional: nunca entra a la asignación automática
+    // Gasto ocasional: no entra a la asignación automática; lo paga quien lo registra (o quien se indique)
+    const fijo = plantilla && plantilla.asignadoDefault !== 'ambos' ? plantilla.asignadoDefault : null
     p = {
       pagoId: null, conceptoId: plantilla?.id ?? null, nombre: plantilla?.nombre ?? capitalizar(escrito),
       categoria: plantilla?.categoria ?? 'otro', tipo: 'ocasional', anio, mes, monto,
-      asignadoA: quien ?? plantilla?.asignadoDefault ?? 'ambos', manual: true, pagado,
+      asignadoA: quien ?? fijo ?? autor.id, manual: true, pagado,
     }
   }
 
