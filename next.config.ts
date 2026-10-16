@@ -3,7 +3,7 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   output: 'standalone',
   devIndicators: false,
-  serverExternalPackages: ['better-sqlite3', 'exceljs'],
+  serverExternalPackages: ['better-sqlite3'],
   poweredByHeader: false,
 }
 
