@@ -56,7 +56,7 @@ export default function Inicio() {
       {enc}
       {nodo}
       <div className="grid gap-5">
-        <section className="rounded-[22px] bg-accent p-5 text-accent-ink">
+        <section data-tour="resumen" className="rounded-[22px] bg-accent p-5 text-accent-ink">
           <p className="text-sm opacity-80">Gastos de {MESES[mes - 1].toLowerCase()}</p>
           <p className="num font-display text-[38px] font-bold leading-tight">{dinero(total, mon)}</p>
           {delta != null && (
@@ -70,7 +70,7 @@ export default function Inicio() {
           </p>
         </section>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div data-tour="personas" className="grid grid-cols-2 gap-3">
           {personas.map((p, i) => {
             const real = i === 0 ? a : b
             const justo = i === 0 ? pct1 : 100 - pct1
@@ -93,14 +93,15 @@ export default function Inicio() {
           </Tarjeta>
         ) : (
           <Seccion titulo="Por pagar" extra={`${pendientes.length} pendientes`}>
+            <div data-tour="pendientes">
             <Tarjeta className="!py-1">
               {pendientes.length === 0 && <p className="py-6 text-center text-sm text-ink-2">Todo pagado este mes.</p>}
-              {pendientes.map(f => {
+              {pendientes.map((f, idx) => {
                 const estado = estadoFila(f, anio, mes)
                 const monto = f.pago?.monto ?? f.montoSugerido
                 const asign = f.pago?.asignadoA ?? f.asignacionSugerida ?? f.concepto?.asignadoDefault ?? 'ambos'
                 return (
-                  <div key={f.key} className="grid gap-1.5 border-t border-line py-3 first:border-0">
+                  <div key={f.key} data-tour={idx === 0 ? 'pendiente' : undefined} className="grid gap-1.5 border-t border-line py-3 first:border-0">
                   <div className="flex items-center gap-3">
                     <Sigla categoria={f.categoria} />
                     <div className="min-w-0 flex-1">
@@ -122,6 +123,7 @@ export default function Inicio() {
                 )
               })}
             </Tarjeta>
+            </div>
             <Link href={`/registrar${query}`} className="px-1 text-sm font-semibold text-accent">Editar montos y asignaciones →</Link>
           </Seccion>
         )}

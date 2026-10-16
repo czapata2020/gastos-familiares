@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { BarChart3, Home, ListChecks, Settings } from 'lucide-react'
+import Tutorial from './Tutorial'
 
 const NAV = [
   { href: '/', label: 'Inicio', icon: Home },
@@ -33,7 +34,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {NAV.map(({ href, label, icon: Icon }) => {
             const activo = pathname === href
             return (
-              <Link key={href} href={href + q}
+              <Link key={href} href={href + q} data-tour={`nav-${href.slice(1) || 'inicio'}`}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
                   activo ? 'bg-accent-soft text-accent' : 'text-ink-2 hover:bg-surface-2'}`}>
                 <Icon className="h-[18px] w-[18px]" strokeWidth={activo ? 2.3 : 1.9} />
@@ -48,6 +49,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         style={{ paddingLeft: 'max(1rem, env(safe-area-inset-left))', paddingRight: 'max(1rem, env(safe-area-inset-right))' }}>
         {children}
       </main>
+      <Tutorial />
 
       {/* Celular: barra inferior */}
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-surface/95 backdrop-blur md:hidden"
@@ -55,7 +57,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {NAV.map(({ href, label, icon: Icon }) => {
           const activo = pathname === href
           return (
-            <Link key={href} href={href + q}
+            <Link key={href} href={href + q} data-tour={`nav-${href.slice(1) || 'inicio'}`}
               className={`grid justify-items-center gap-0.5 pb-2 pt-2.5 text-[11px] font-semibold ${activo ? 'text-accent' : 'text-ink-3'}`}>
               <Icon className="h-[22px] w-[22px]" strokeWidth={activo ? 2.3 : 1.9} />
               {label}
