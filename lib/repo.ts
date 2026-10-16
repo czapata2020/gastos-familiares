@@ -167,10 +167,26 @@ export function borrarPago(id: string) {
   if (p && p.tipo !== 'ocasional') rebalancearMes(p.anio, p.mes)
 }
 
-/** Devuelve a la regla automática todos los recurrentes del mes que no están pagados. */
-export function automatizarMes(anio: number, mes: number): number {
-  getDb().prepare("UPDATE pagos SET asignacion_manual = 0 WHERE anio = ? AND mes = ? AND tipo <> 'ocasional' AND pagado = 0").run(anio, mes)
-  return rebalancearMes(anio, mes)
+/**
+ * Devuelve a la regla automática los recurrentes del mes. Por defecto solo los no pagados;
+ * con `incluirPagados` también recalcula los pagados (útil al cargar meses pasados de cero).
+ */
+export function automatizarMes(anio: number, mes: number, incluirPagados = false): number {
+  const db = getDb()
+  if (!incluirPagados) {
+    db.prepare("UPDATE pagos SET asignacion_manual = 0 WHERE anio = ? AND mes = ? AND tipo <> 'ocasional' AND pagado = 0").run(anio, mes)
+    return rebalancearMes(anio, mes)
+  }
+  let n = 0
+  db.transaction(() => {
+    const pagados = (db.prepare("SELECT id FROM pagos WHERE anio = ? AND mes = ? AND tipo <> 'ocasional' AND pagado = 1").all(anio, mes) as Row[]).map(r => r.id as string)
+    // sin pagar un instante para que la regla pueda moverlos; la fecha de pago se conserva
+    db.prepare("UPDATE pagos SET asignacion_manual = 0, pagado = 0 WHERE anio = ? AND mes = ? AND tipo <> 'ocasional'").run(anio, mes)
+    n = rebalancearMes(anio, mes)
+    const volver = db.prepare('UPDATE pagos SET pagado = 1 WHERE id = ?')
+    for (const id of pagados) volver.run(id)
+  })()
+  return n
 }
 
 /**

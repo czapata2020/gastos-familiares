@@ -462,6 +462,7 @@ interface PlanImport {
   filas: { fila: number; accion: 'crear' | 'actualizar'; nombre: string; anio: number; mes: number; monto: number; aviso: string | null }[]
   errores: { fila: number; mensaje: string }[]
   omitidas: number
+  nuevos: string[]
   resumen: { crear: number; actualizar: number; borrar: number; total: number; meses: string[] }
 }
 
@@ -560,6 +561,13 @@ function SeccionPlantilla({ aviso, moneda }: { aviso: (m: string, e?: boolean) =
                 <p className="font-semibold">Corrige estas filas y vuelve a subir el archivo:</p>
                 {plan.errores.slice(0, 15).map(e => <p key={e.fila}>Fila {e.fila}: {e.mensaje}</p>)}
                 {plan.errores.length > 15 && <p>…y {plan.errores.length - 15} más</p>}
+              </div>
+            )}
+            {plan.nuevos.length > 0 && (
+              <div className="grid gap-1 rounded-lg bg-warn/10 p-2.5 text-warn">
+                <p className="font-semibold">Estos nombres no coinciden con ningún gasto recurrente y se cargarán como ocasionales (sin asignación automática):</p>
+                <p>{plan.nuevos.join(', ')}</p>
+                <p className="text-ink-2">Si son tus recurrentes con otro nombre, corrige el nombre en la plantilla (o renombra el gasto en Ajustes) y vuelve a subirla.</p>
               </div>
             )}
             {plan.filas.some(f => f.aviso) && (

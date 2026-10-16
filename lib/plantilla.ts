@@ -153,6 +153,8 @@ export interface Plan {
   omitidas: number
   /** Borrón y cuenta nueva: se borra lo registrado en los meses del archivo y todo se crea de cero. */
   reemplazar: boolean
+  /** Nombres que no coinciden con ningún gasto configurado: se crearán como ocasionales nuevos. */
+  nuevos: string[]
   resumen: { crear: number; actualizar: number; borrar: number; total: number; meses: string[] }
 }
 
@@ -245,8 +247,12 @@ export async function planificarImportacion(archivo: ArrayBuffer, reemplazar = f
     }
 
     // 2) Sin ID → buscar el gasto por nombre
+    // Exacto primero (incluye archivados); si no, el más parecido entre los activos: "Pluz" → "Luz Pluz"
     const exacto = conceptos.find(c => normalizar(c.nombre) === normalizar(crudo.gasto))
-    const c: Concepto | null = exacto ?? (() => { const m = mejorCoincidencia(crudo.gasto, conceptos); return m && puntaje(crudo.gasto, m.nombre) >= 80 ? m : null })()
+    const c: Concepto | null = exacto ?? (() => {
+      const m = mejorCoincidencia(crudo.gasto, conceptos.filter(k => k.activo))
+      return m && puntaje(crudo.gasto, m.nombre) >= 60 ? m : null
+    })()
 
     if (c && c.tipo !== 'ocasional') {
       const clave = `${c.id}:${anio}-${mes}`
@@ -278,6 +284,7 @@ export async function planificarImportacion(archivo: ArrayBuffer, reemplazar = f
     : 0
   return {
     filas, errores, omitidas, reemplazar,
+    nuevos: [...new Set(filas.filter(f => f.tipo === 'ocasional' && !f.conceptoId).map(f => f.nombre))],
     resumen: {
       crear: filas.filter(f => f.accion === 'crear').length,
       actualizar: filas.filter(f => f.accion === 'actualizar').length,

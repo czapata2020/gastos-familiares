@@ -20,6 +20,7 @@ export default function Registrar() {
   const { aviso, nodo } = useAviso()
   const [hojaAbierta, setHojaAbierta] = useState(false)
   const [ocupado, setOcupado] = useState(false)
+  const [confirmarRecalculo, setConfirmarRecalculo] = useState(false)
 
   const enc = <Encabezado titulo="Registrar"><MesSelector anio={anio} mes={mes} mover={mover} /></Encabezado>
   if (error) return <>{enc}<ErrorCarga msg={error} reintentar={recargar} /></>
@@ -101,6 +102,15 @@ export default function Registrar() {
                 catch (e) { aviso((e as Error).message, true) } finally { setOcupado(false) }
               }}><Wand2 className="h-4 w-4" />Pasar todo el mes a automático</button>
             )}
+            <button type="button" disabled={ocupado} className="justify-self-start text-xs font-semibold text-ink-3 underline underline-offset-2"
+              onClick={async () => {
+                if (!confirmarRecalculo) { setConfirmarRecalculo(true); setTimeout(() => setConfirmarRecalculo(false), 4000); return }
+                setOcupado(true); setConfirmarRecalculo(false)
+                try { await api('/api/mes/automatico', 'POST', { anio, mes, incluirPagados: true }); aviso('Mes recalculado'); await recargar() }
+                catch (e) { aviso((e as Error).message, true) } finally { setOcupado(false) }
+              }}>
+              {confirmarRecalculo ? 'Toca otra vez para recalcular todo el mes, incluidos los pagados' : 'Recalcular todo el mes (incluye pagados)'}
+            </button>
           </Tarjeta>
         )}
 
