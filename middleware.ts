@@ -46,5 +46,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   // api/whatsapp/webhook queda fuera: lo llama Meta y se valida con la firma HMAC del App Secret
-  matcher: ['/((?!api/health|api/whatsapp/webhook|_next/static|_next/image|icon|apple-icon|manifest.webmanifest).*)'],
+  // publico/: política de privacidad e ícono que exige Meta para publicar la app de WhatsApp
+  matcher: ['/((?!api/health|api/whatsapp/webhook|publico|_next/static|_next/image|icon|apple-icon|manifest.webmanifest).*)'],
 }

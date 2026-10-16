@@ -16,6 +16,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const p = useSearchParams().get('p')
   const q = p ? `?p=${p}` : ''
 
+  // Páginas públicas (sin login): sin menú de la app
+  if (pathname.startsWith('/publico')) {
+    return <main className="mx-auto w-full max-w-3xl px-4 pb-12 pt-6" style={{ paddingLeft: 'max(1rem, env(safe-area-inset-left))', paddingRight: 'max(1rem, env(safe-area-inset-right))' }}>{children}</main>
+  }
+
   return (
     <div className="min-h-dvh md:pl-56">
       {/* Escritorio: barra lateral */}
