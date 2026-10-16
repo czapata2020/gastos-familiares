@@ -74,7 +74,7 @@ function SeccionReparto({ repartos, personas, config, onCambio, onConfig, aviso 
       <Tarjeta className="flex items-center justify-between gap-4 text-sm">
         <div className="min-w-0">
           <p className="font-semibold">Asignación automática</p>
-          <p className="text-ink-3">Reparte cada gasto recurrente completo a una persona para acercarse a este %. Los ocasionales se asignan a mano.</p>
+          <p className="text-ink-3">Cada uno tiene su grupo de gastos fijos que paga completos, sin depositarse partes. El grupo se mantiene mes a mes y solo cambia si el año se aleja más de 3 puntos de este %. Los ocasionales los paga quien los registra.</p>
         </div>
         <button type="button" role="switch" aria-checked={config.asignacionAuto} aria-label="Asignación automática" onClick={alternarAuto}
           className={`relative h-7 w-12 shrink-0 rounded-full transition ${config.asignacionAuto ? 'bg-accent' : 'bg-line'}`}>

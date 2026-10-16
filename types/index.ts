@@ -98,4 +98,6 @@ export interface EstadoMes {
   arrastre1: number
   filas: FilaMes[]
   ocasionales: Concepto[]
+  /** Persona que está usando la app (por su correo de acceso); los ocasionales que registre quedan a su nombre. */
+  yo?: PersonaId | null
 }

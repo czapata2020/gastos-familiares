@@ -1,5 +1,5 @@
 import 'server-only'
-import type { Asignacion, Categoria, Concepto, Config, EstadoMes, Pago, Persona, Reparto, TipoConcepto } from '@/types'
+import type { Asignacion, Categoria, Concepto, Config, EstadoMes, Pago, Persona, PersonaId, Reparto, TipoConcepto } from '@/types'
 import { getDb, uid } from './db'
 import { armarFilas, asignacionAutomatica, dividir, porcentajePersona1, repartoVigente } from './reparto'
 import { calcularMetricas } from './metricas'
@@ -34,6 +34,12 @@ export function setConfig(c: Partial<Config>) {
   if (c.monedaBase !== undefined) up.run('moneda', c.monedaBase)
   if (c.asignacionAuto !== undefined) up.run('asignacion_auto', c.asignacionAuto ? '1' : '0')
 }
+/** Persona dueña del correo con que se entró (Cloudflare Access), si coincide con Ajustes → Hogar. */
+export function personaPorEmail(email: string | null | undefined): PersonaId | null {
+  const e = (email ?? '').trim().toLowerCase()
+  return (e && getPersonas().find(p => p.email && p.email.toLowerCase() === e)?.id) || null
+}
+
 export function getPersonas(): [Persona, Persona] {
   const rows = (getDb().prepare('SELECT * FROM personas ORDER BY id').all() as Row[]).map(r => ({
     id: r.id, nombre: r.nombre, email: r.email, telefono: r.telefono ?? '', waUserId: r.wa_user_id ?? '',
@@ -274,9 +280,9 @@ export function getEstadoMes(anio: number, mes: number): EstadoMes {
   const conceptos = listConceptos(true)
   const pct1 = porcentajePersona1(repartoVigente(listRepartos(), anio, mes), config.monedaBase)
   const filas = armarFilas(conceptos.filter(c => c.activo || c.tipo !== 'ocasional'), listPagos(anio, mes), anio, mes)
-  const arrastre1 = arrastreAnual(anio, mes, config.monedaBase)
+  const { desvio: arrastre1, total: totalPrevio } = arrastreAnual(anio, mes, config.monedaBase)
   if (config.asignacionAuto) {
-    const sugerida = asignacionAutomatica(filas, pct1, arrastre1)
+    const sugerida = asignacionAutomatica(filas, pct1, { arrastre1, totalPrevio, ...historiaConceptos(anio, mes) })
     for (const f of filas) {
       if (!f.concepto || f.tipo === 'ocasional' || f.pago?.pagado || f.pago?.asignacionManual) continue
       const preferido = f.concepto.asignadoDefault
@@ -289,17 +295,36 @@ export function getEstadoMes(anio: number, mes: number): EstadoMes {
   }
 }
 
-/** Desvío acumulado de la persona 1 en los recurrentes de enero hasta el mes anterior (mismo año). */
-function arrastreAnual(anio: number, mes: number, monedaBase: string): number {
-  if (mes === 1) return 0
+/**
+ * Acumulado del año hasta el mes anterior: cuánto de más (+) o de menos (−) cargó la persona 1 sobre
+ * lo que le tocaba por ingreso, y el total gastado. Incluye ocasionales: un gasto ocasional que pagó
+ * una persona se compensa en los recurrentes de los meses siguientes.
+ */
+function arrastreAnual(anio: number, mes: number, monedaBase: string): { desvio: number; total: number } {
+  if (mes === 1) return { desvio: 0, total: 0 }
   const repartos = listRepartos()
-  const rows = getDb().prepare("SELECT mes, monto, asignado_a FROM pagos WHERE anio = ? AND mes < ? AND tipo <> 'ocasional'").all(anio, mes) as Row[]
-  let desvio = 0
+  const rows = getDb().prepare('SELECT mes, monto, asignado_a FROM pagos WHERE anio = ? AND mes < ?').all(anio, mes) as Row[]
+  let desvio = 0, total = 0
   for (const r of rows) {
     const pct = porcentajePersona1(repartoVigente(repartos, anio, r.mes), monedaBase)
     desvio += dividir(r.monto, r.asignado_a, pct)[0] - (r.monto * pct) / 100
+    total += r.monto
   }
-  return desvio
+  return { desvio, total }
+}
+
+/** Para cada recurrente: quién lo pagó la última vez antes de este mes (no "Ambos") y su último monto. */
+function historiaConceptos(anio: number, mes: number) {
+  const rows = getDb().prepare(`SELECT concepto_id, asignado_a, monto FROM pagos
+    WHERE concepto_id IS NOT NULL AND tipo <> 'ocasional' AND (anio * 12 + mes) < ?
+    ORDER BY anio * 12 + mes DESC`).all(anio * 12 + mes) as Row[]
+  const previo = new Map<string, PersonaId>()
+  const montoRespaldo = new Map<string, number>()
+  for (const r of rows) {
+    if (!montoRespaldo.has(r.concepto_id)) montoRespaldo.set(r.concepto_id, r.monto)
+    if (!previo.has(r.concepto_id) && (r.asignado_a === '1' || r.asignado_a === '2')) previo.set(r.concepto_id, r.asignado_a)
+  }
+  return { previo, montoRespaldo }
 }
 
 export function getMetricas(anio: number, mesFoco: number) {

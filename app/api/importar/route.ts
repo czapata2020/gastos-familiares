@@ -1,5 +1,7 @@
 import { handler, ErrorValidacion } from '@/lib/api'
+import { headers } from 'next/headers'
 import { aplicarImportacion, planificarImportacion } from '@/lib/plantilla'
+import { personaPorEmail } from '@/lib/repo'
 
 export const dynamic = 'force-dynamic'
 const MAX_BYTES = 5 * 1024 * 1024
@@ -15,7 +17,8 @@ export const POST = handler(async (req: Request) => {
   if (archivo.size > MAX_BYTES) throw new ErrorValidacion('El archivo pesa más de 5 MB')
   let plan
   const reemplazar = form.get('reemplazar') === '1'
-  try { plan = await planificarImportacion(await archivo.arrayBuffer(), reemplazar) } catch (e) { throw new ErrorValidacion((e as Error).message) }
+  const yo = personaPorEmail((await headers()).get('x-user-email'))
+  try { plan = await planificarImportacion(await archivo.arrayBuffer(), reemplazar, yo) } catch (e) { throw new ErrorValidacion((e as Error).message) }
   if (form.get('modo') !== 'aplicar') return plan
   if (plan.errores.length) throw new ErrorValidacion('La plantilla tiene errores: corrígelos y vuelve a subirla')
   return { ok: true, ...aplicarImportacion(plan) }

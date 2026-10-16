@@ -1,6 +1,6 @@
 import 'server-only'
 import ExcelJS from 'exceljs'
-import type { Asignacion, Categoria, Concepto, Pago, Persona, TipoConcepto } from '@/types'
+import type { Asignacion, Categoria, Concepto, Pago, Persona, PersonaId, TipoConcepto } from '@/types'
 import { getDb } from './db'
 import { CATEGORIAS } from './categorias'
 import { conceptoActivoEnMes, MESES, montoSugerido } from './reparto'
@@ -179,7 +179,7 @@ function leerMes(s: string): number | null {
   return t.length >= 3 && i >= 0 ? i + 1 : null
 }
 
-export async function planificarImportacion(archivo: ArrayBuffer, reemplazar = false): Promise<Plan> {
+export async function planificarImportacion(archivo: ArrayBuffer, reemplazar = false, yo: PersonaId | null = null): Promise<Plan> {
   const wb = new ExcelJS.Workbook()
   try { await wb.xlsx.load(archivo) } catch { throw new Error('No pude leer el archivo. Súbelo como Excel (.xlsx).') }
   const hoja = wb.getWorksheet('Gastos') ?? wb.worksheets[0]
@@ -273,7 +273,7 @@ export async function planificarImportacion(archivo: ArrayBuffer, reemplazar = f
     const categoria = (CATEGORIAS.find(k => normalizar(k.nombre) === normalizar(crudo.cat) || k.id === normalizar(crudo.cat))?.id ?? c?.categoria ?? 'otro') as Categoria
     filas.push({
       fila: n, accion: 'crear', pagoId: null, conceptoId: c?.id ?? null, nombre: c?.nombre ?? crudo.gasto, categoria,
-      tipo: 'ocasional', anio, mes, monto, asignadoA: asignadoA ?? 'ambos', pagado, nota,
+      tipo: 'ocasional', anio, mes, monto, asignadoA: asignadoA ?? (c && c.asignadoDefault !== 'ambos' ? c.asignadoDefault : yo ?? 'ambos'), pagado, nota,
       aviso: c ? null : 'Gasto nuevo: se crea como ocasional',
     })
   })

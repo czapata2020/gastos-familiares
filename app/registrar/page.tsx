@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Check, Copy, NotebookPen, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react'
-import type { Asignacion, Categoria, Concepto, EstadoMes, FilaMes, Persona } from '@/types'
+import type { Asignacion, Categoria, Concepto, EstadoMes, FilaMes, Persona, PersonaId } from '@/types'
 import { api, dinero, parseMonto, useDatos, usePeriodo } from '@/lib/cliente'
 import { dividir, estadoFila, montoFila } from '@/lib/reparto'
 import { CATEGORIAS } from '@/lib/categorias'
@@ -93,7 +93,7 @@ export default function Registrar() {
             <p className="text-xs text-ink-3">
               Objetivo por ingreso: {pct1.toFixed(0)}% / {(100 - pct1).toFixed(0)}%.
               {Math.abs(data.arrastre1) >= 1 && <> Este mes compensa lo de meses anteriores: {nombreCorto(personas[data.arrastre1 > 0 ? 0 : 1])} venía cargando {dinero(Math.abs(data.arrastre1), mon)} de más.</>}
-              {' '}Cada gasto va completo a una persona; los pagados y los que eliges a mano no se mueven. Los ocasionales se asignan aparte.
+              {' '}Cada gasto va completo a una persona y se queda con ella mes a mes; solo se mueve alguno si el año se desvía más de 3 puntos del objetivo. Los pagados y los que eliges a mano no se mueven; los ocasionales los paga quien los registra y se compensan en los meses siguientes.
             </p>
             {data.filas.some(f => f.pago && !f.pago.pagado && f.pago.asignacionManual && f.tipo !== 'ocasional') && (
               <button type="button" className={`${btnSecundario} justify-self-start`} disabled={ocupado} onClick={async () => {
@@ -151,7 +151,7 @@ export default function Registrar() {
         </div>
       </div>
 
-      <HojaOcasional abierta={hojaAbierta} onCerrar={() => setHojaAbierta(false)} plantillas={data.ocasionales}
+      <HojaOcasional abierta={hojaAbierta} onCerrar={() => setHojaAbierta(false)} plantillas={data.ocasionales} yo={data.yo ?? null}
         personas={personas} anio={anio} mes={mes} moneda={mon}
         onGuardado={async nombre => { setHojaAbierta(false); aviso(`${nombre} agregado`); await recargar() }}
         onError={m => aviso(m, true)} />
@@ -310,11 +310,12 @@ function FilaEditable({ f, anio, mes, personas, auto, onCambio, onError }: {
   )
 }
 
-function HojaOcasional({ abierta, onCerrar, plantillas, personas, anio, mes, moneda, onGuardado, onError }: {
-  abierta: boolean; onCerrar: () => void; plantillas: Concepto[]; personas: [Persona, Persona]
+function HojaOcasional({ abierta, onCerrar, plantillas, yo, personas, anio, mes, moneda, onGuardado, onError }: {
+  abierta: boolean; onCerrar: () => void; plantillas: Concepto[]; yo: PersonaId | null; personas: [Persona, Persona]
   anio: number; mes: number; moneda: string; onGuardado: (nombre: string) => Promise<void>; onError: (m: string) => void
 }) {
-  const vacio = { conceptoId: null as string | null, nombre: '', categoria: 'otro' as Categoria, monto: '', asignadoA: 'ambos' as Asignacion, pagado: true, plantilla: false, nota: '' }
+  // Un gasto ocasional lo paga quien lo registra; "Ambos" solo si se elige a mano
+  const vacio = { conceptoId: null as string | null, nombre: '', categoria: 'otro' as Categoria, monto: '', asignadoA: (yo ?? '1') as Asignacion, pagado: true, plantilla: false, nota: '' }
   const [form, setForm] = useState(vacio)
   const [enviando, setEnviando] = useState(false)
   useEffect(() => { if (abierta) setForm(vacio) }, [abierta]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -349,7 +350,7 @@ function HojaOcasional({ abierta, onCerrar, plantillas, personas, anio, mes, mon
             <div className="flex flex-wrap gap-2">
               {plantillas.map(p => (
                 <button key={p.id} type="button"
-                  onClick={() => setForm({ ...form, conceptoId: p.id, nombre: p.nombre, categoria: p.categoria, monto: p.montoRef != null ? String(p.montoRef) : '', asignadoA: p.asignadoDefault, plantilla: false })}
+                  onClick={() => setForm({ ...form, conceptoId: p.id, nombre: p.nombre, categoria: p.categoria, monto: p.montoRef != null ? String(p.montoRef) : '', asignadoA: p.asignadoDefault !== 'ambos' ? p.asignadoDefault : form.asignadoA, plantilla: false })}
                   className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${form.conceptoId === p.id ? 'border-accent bg-accent-soft text-accent' : 'border-line'}`}>
                   {p.nombre}
                 </button>
