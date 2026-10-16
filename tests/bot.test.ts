@@ -69,6 +69,21 @@ describe('bot de WhatsApp', () => {
     expect(bot.procesarMensaje(CESAR, 'pague hipoteca')[0].texto).toContain('ya estaba pagado')
   })
 
+  it('vincula por código a quien Meta identifica solo con su ID de WhatsApp', () => {
+    const ID = 'PE.13491208655302741918'
+    expect(repo.esUserId(ID)).toBe(true)
+    expect(repo.esUserId(RUDY)).toBe(false)
+    expect(bot.procesarMensaje(ID, 'resumen')).toEqual([])          // desconocido: no responde
+    expect(repo.usarCodigoVinculo('000000', ID)).toBeNull()          // código inválido
+    const codigo = repo.crearCodigoVinculo('2')
+    expect(codigo).toMatch(/^\d{6}$/)
+    expect(repo.usarCodigoVinculo(codigo, ID)?.id).toBe('2')
+    expect(repo.usarCodigoVinculo(codigo, 'PE.otro')).toBeNull()     // un solo uso
+    expect(repo.personaPorRemitente(ID)?.nombre).toBe('Rudy P.')
+    expect(repo.personaPorRemitente(RUDY)?.nombre).toBe('Rudy P.')  // el número sigue funcionando
+    expect(bot.procesarMensaje(ID, 'resumen')[0].texto).toContain('Total')
+  })
+
   it('resumen, pendientes y mensajes que no entiende', () => {
     expect(bot.procesarMensaje(CESAR, 'resumen')[0].texto).toMatch(/Total: \*S\/\s?3,471\.00\*/)
     expect(bot.procesarMensaje(CESAR, 'pendientes')[0].texto).toContain('Farmacia')

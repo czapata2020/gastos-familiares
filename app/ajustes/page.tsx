@@ -408,6 +408,11 @@ function SeccionHogar({ ajustes, onCambio, aviso }: { ajustes: Ajustes; onCambio
             </div>
           ))}
           <p className="-mt-1 text-xs text-ink-3">El WhatsApp va con código de país (51 para Perú). Solo esos dos números pueden usar el bot.</p>
+          <div className="grid gap-2 rounded-xl bg-surface-2 p-3">
+            <p className="text-sm font-semibold">Bot de WhatsApp</p>
+            <p className="text-xs text-ink-3">Si el bot no le responde a alguien (pasa con quien usa nombre de usuario en WhatsApp, porque Meta no envía su número), vincúlalo con un código.</p>
+            {ajustes.personas.map(p => <VincularWhatsApp key={p.id} persona={p} aviso={aviso} />)}
+          </div>
           <label className={`${labelCls} w-40`}>Moneda principal
             <select id="pe-moneda" className={inputCls} value={f.config.monedaBase} onChange={e => setF({ ...f, config: { ...f.config, monedaBase: e.target.value } })}>
               {MONEDAS.map(m => <option key={m}>{m}</option>)}
@@ -591,5 +596,33 @@ function SeccionPlantilla({ aviso, moneda }: { aviso: (m: string, e?: boolean) =
         )}
       </Tarjeta>
     </Seccion>
+  )
+}
+
+function VincularWhatsApp({ persona, aviso }: { persona: Persona; aviso: (m: string, e?: boolean) => void }) {
+  const [codigo, setCodigo] = useState<string | null>(null)
+  async function generar() {
+    try { setCodigo((await api<{ codigo: string }>('/api/whatsapp/vincular', 'POST', { personaId: persona.id })).codigo) }
+    catch (e) { aviso((e as Error).message, true) }
+  }
+  return (
+    <div className="grid gap-1.5 border-t border-line pt-2 text-sm first-of-type:border-0">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span>
+          <b>{nombreCorto(persona)}</b>{' '}
+          <span className="text-xs text-ink-3">{persona.waUserId ? '· vinculado por ID de WhatsApp' : persona.telefono ? '· reconocido por número' : '· sin WhatsApp'}</span>
+        </span>
+        <button type="button" onClick={generar} className="text-xs font-semibold text-accent underline underline-offset-2">
+          {codigo ? 'Generar otro código' : 'Vincular con código'}
+        </button>
+      </div>
+      {codigo && (
+        <p className="rounded-lg bg-surface px-3 py-2 text-xs text-ink-2">
+          Desde el WhatsApp de {nombreCorto(persona)}, envía al <b>+51 969 313 680</b>:{' '}
+          <b className="num select-all text-base text-ink">vincular {codigo}</b>
+          <br />Vence en 15 minutos y sirve una sola vez.
+        </p>
+      )}
+    </div>
   )
 }

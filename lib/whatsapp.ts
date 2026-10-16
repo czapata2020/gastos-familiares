@@ -38,10 +38,12 @@ export async function enviar(para: string, r: Respuesta): Promise<void> {
       }
     : { type: 'text', text: { body: r.texto.slice(0, 4096), preview_url: false } }
 
+  // A quien Meta identifica solo por su ID de WhatsApp (BSUID, "PE.123…") se le escribe con "recipient"; al resto, con "to"
+  const destino = /^[A-Z]{2}\./.test(para) ? { recipient: para } : { to: para }
   const res = await fetch(`https://graph.facebook.com/${VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
     method: 'POST',
     headers: { authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: para, ...cuerpo }),
+    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', ...destino, ...cuerpo }),
   })
   if (!res.ok) throw new Error(`WhatsApp ${res.status}: ${(await res.text()).slice(0, 300)}`)
 }
