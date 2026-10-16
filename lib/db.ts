@@ -166,6 +166,19 @@ function agregarColumnas(db: Database.Database) {
     db.exec('UPDATE pagos SET asignacion_manual = 1')
   }
   db.prepare("INSERT OR IGNORE INTO config (clave, valor) VALUES ('asignacion_auto', '1')").run()
+  // WhatsApp: teléfono de cada persona (solo esos números pueden usar el bot)
+  if (!columnas('personas').has('telefono')) db.exec("ALTER TABLE personas ADD COLUMN telefono TEXT NOT NULL DEFAULT ''")
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS wa_pendientes (       -- propuestas esperando "Confirmar" en el chat
+      id        TEXT PRIMARY KEY,
+      wa_id     TEXT NOT NULL,
+      datos     TEXT NOT NULL,
+      creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS wa_mensajes (         -- ids ya procesados: Meta puede reenviar el mismo mensaje
+      id        TEXT PRIMARY KEY,
+      creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+    );`)
 }
 
 async function backupDiario(db: Database.Database) {

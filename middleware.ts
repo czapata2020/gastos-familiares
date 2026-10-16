@@ -45,5 +45,6 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api/health|_next/static|_next/image|icon|apple-icon|manifest.webmanifest).*)'],
+  // api/whatsapp/webhook queda fuera: lo llama Meta y se valida con la firma HMAC del App Secret
+  matcher: ['/((?!api/health|api/whatsapp/webhook|_next/static|_next/image|icon|apple-icon|manifest.webmanifest).*)'],
 }

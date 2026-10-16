@@ -16,6 +16,9 @@ export const PUT = handler(async (req: Request) => {
   if (typeof b.asignacionAuto === 'boolean') setConfig({ asignacionAuto: b.asignacionAuto })
   for (const p of Array.isArray(b.personas) ? b.personas : []) {
     if (p.id !== '1' && p.id !== '2') continue
-    setPersona({ id: p.id, nombre: v.texto(p.nombre, 'Nombre', 40), email: v.texto(p.email, 'Correo', 120, false) })
+    setPersona({
+      id: p.id, nombre: v.texto(p.nombre, 'Nombre', 40), email: v.texto(p.email, 'Correo', 120, false),
+      telefono: v.texto(p.telefono, 'WhatsApp', 20, false),
+    })
   }
 })

@@ -39,7 +39,15 @@ export function getPersonas(): [Persona, Persona] {
   return [rows[0], rows[1]]
 }
 export function setPersona(p: Persona) {
-  getDb().prepare('UPDATE personas SET nombre = ?, email = ? WHERE id = ?').run(p.nombre.trim(), p.email.trim().toLowerCase(), p.id)
+  getDb().prepare('UPDATE personas SET nombre = ?, email = ?, telefono = ? WHERE id = ?')
+    .run(p.nombre.trim(), p.email.trim().toLowerCase(), soloDigitos(p.telefono ?? ''), p.id)
+}
+
+export const soloDigitos = (s: string) => s.replace(/\D/g, '')
+
+export function personaPorTelefono(waId: string): Persona | null {
+  const tel = soloDigitos(waId)
+  return getPersonas().find(p => p.telefono && p.telefono === tel) ?? null
 }
 
 // ── Repartos ──────────────────────────────────────────────────────────────────

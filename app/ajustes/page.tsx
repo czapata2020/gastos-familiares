@@ -388,7 +388,7 @@ function SeccionHogar({ ajustes, onCambio, aviso }: { ajustes: Ajustes; onCambio
       <Tarjeta>
         <form onSubmit={guardar} className="grid gap-4">
           {f.personas.map((p, i) => (
-            <div key={p.id} className="grid grid-cols-2 gap-2">
+            <div key={p.id} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <label className={labelCls}>Persona {p.id}
                 <input id={`pe-n${p.id}`} className={inputCls} value={p.nombre}
                   onChange={e => { const ps = [...f.personas] as [Persona, Persona]; ps[i] = { ...p, nombre: e.target.value }; setF({ ...f, personas: ps }) }} />
@@ -397,8 +397,13 @@ function SeccionHogar({ ajustes, onCambio, aviso }: { ajustes: Ajustes; onCambio
                 <input id={`pe-e${p.id}`} type="email" className={inputCls} value={p.email}
                   onChange={e => { const ps = [...f.personas] as [Persona, Persona]; ps[i] = { ...p, email: e.target.value }; setF({ ...f, personas: ps }) }} />
               </label>
+              <label className={`${labelCls} col-span-2 sm:col-span-1`}>WhatsApp
+                <input id={`pe-t${p.id}`} type="tel" inputMode="tel" className={`${inputCls} num`} value={p.telefono} placeholder="51 987 654 321"
+                  onChange={e => { const ps = [...f.personas] as [Persona, Persona]; ps[i] = { ...p, telefono: e.target.value }; setF({ ...f, personas: ps }) }} />
+              </label>
             </div>
           ))}
+          <p className="-mt-1 text-xs text-ink-3">El WhatsApp va con código de país (51 para Perú). Solo esos dos números pueden usar el bot.</p>
           <label className={`${labelCls} w-40`}>Moneda principal
             <select id="pe-moneda" className={inputCls} value={f.config.monedaBase} onChange={e => setF({ ...f, config: { ...f.config, monedaBase: e.target.value } })}>
               {MONEDAS.map(m => <option key={m}>{m}</option>)}
