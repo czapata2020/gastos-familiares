@@ -21,6 +21,7 @@ const toPago = (r: Row): Pago => ({
 const toReparto = (r: Row): Reparto => ({
   id: r.id, desde: r.desde, salario1: r.salario1, moneda1: r.moneda1, salario2: r.salario2,
   moneda2: r.moneda2, tipoCambio: r.tipo_cambio, porcentajeManual: r.porcentaje_manual,
+  periodo: r.periodo === 'anual' ? 'anual' : 'mensual',
 })
 
 // ── Config y personas ─────────────────────────────────────────────────────────
@@ -95,14 +96,14 @@ export function usarCodigoVinculo(codigo: string, userId: string): Persona | nul
 export function listRepartos(): Reparto[] {
   return (getDb().prepare('SELECT * FROM repartos ORDER BY desde DESC').all() as Row[]).map(toReparto)
 }
-export function guardarReparto(r: Omit<Reparto, 'id'> & { id?: string }) {
+export function guardarReparto(r: Omit<Reparto, 'id' | 'periodo'> & { id?: string; periodo?: Reparto['periodo'] }) {
   const db = getDb()
   const id = r.id ?? uid('rep')
-  db.prepare(`INSERT INTO repartos (id, desde, salario1, moneda1, salario2, moneda2, tipo_cambio, porcentaje_manual)
-              VALUES (@id, @desde, @salario1, @moneda1, @salario2, @moneda2, @tipoCambio, @porcentajeManual)
+  db.prepare(`INSERT INTO repartos (id, desde, salario1, moneda1, salario2, moneda2, tipo_cambio, porcentaje_manual, periodo)
+              VALUES (@id, @desde, @salario1, @moneda1, @salario2, @moneda2, @tipoCambio, @porcentajeManual, @periodo)
               ON CONFLICT(id) DO UPDATE SET desde=@desde, salario1=@salario1, moneda1=@moneda1, salario2=@salario2,
-                moneda2=@moneda2, tipo_cambio=@tipoCambio, porcentaje_manual=@porcentajeManual`)
-    .run({ ...r, id, porcentajeManual: r.porcentajeManual ?? null })
+                moneda2=@moneda2, tipo_cambio=@tipoCambio, porcentaje_manual=@porcentajeManual, periodo=@periodo`)
+    .run({ ...r, id, porcentajeManual: r.porcentajeManual ?? null, periodo: r.periodo === 'anual' ? 'anual' : 'mensual' })
   return id
 }
 export function borrarReparto(id: string) {

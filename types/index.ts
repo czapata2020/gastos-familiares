@@ -28,6 +28,8 @@ export interface Reparto {
   tipoCambio: number
   /** Si se define, ignora salarios y usa este % para la persona 1 (0-100). */
   porcentajeManual: number | null
+  /** Si los salarios son mensuales o anuales. El % no cambia (es una proporción); es para mostrarlos como se cargaron. */
+  periodo: 'mensual' | 'anual'
 }
 
 export interface Concepto {

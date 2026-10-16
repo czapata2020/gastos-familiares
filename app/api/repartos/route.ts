@@ -19,6 +19,7 @@ export const POST = handler(async (req: Request) => {
     moneda2: v.moneda(b.moneda2),
     tipoCambio: v.monto(b.tipoCambio, 'Tipo de cambio') || 1,
     porcentajeManual: manual,
+    periodo: b.periodo === 'anual' ? 'anual' : 'mensual',
   })
   return { ok: true, id }
 })
