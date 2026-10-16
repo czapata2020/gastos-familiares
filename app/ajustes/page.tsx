@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Download, FileSpreadsheet, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import Link from 'next/link'
+import { Download, FileSpreadsheet, GraduationCap, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import type { Asignacion, Categoria, Concepto, Config, Persona, Reparto, TipoConcepto } from '@/types'
 import { api, dinero, parseMonto, useDatos } from '@/lib/cliente'
 import { conceptoFinalizado, MESES, MESES_CORTO, porcentajePersona1 } from '@/lib/reparto'
@@ -38,6 +39,7 @@ export default function AjustesPage() {
         <SeccionPlantilla aviso={aviso} moneda={config.monedaBase} />
         <Seccion titulo="Datos">
           <Tarjeta className="grid gap-3 text-sm">
+            <Link href="/?tutorial=1" className={`${btnSecundario} justify-self-start`}><GraduationCap className="h-4 w-4" />Ver tutorial</Link>
             <a href="/api/exportar" className={`${btnSecundario} justify-self-start`}><Download className="h-4 w-4" />Descargar todo en CSV (Excel)</a>
             <p className="text-ink-3">La base se respalda sola todos los días en el servidor (se guardan 14 copias).</p>
             {usuario && <p className="text-ink-3">Sesión: {usuario}</p>}
