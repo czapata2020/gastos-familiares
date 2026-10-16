@@ -151,7 +151,9 @@ export interface Plan {
   filas: FilaPlan[]
   errores: { fila: number; mensaje: string }[]
   omitidas: number
-  resumen: { crear: number; actualizar: number; total: number; meses: string[] }
+  /** Borrón y cuenta nueva: se borra lo registrado en los meses del archivo y todo se crea de cero. */
+  reemplazar: boolean
+  resumen: { crear: number; actualizar: number; borrar: number; total: number; meses: string[] }
 }
 
 function valor(c: ExcelJS.Cell): string {
@@ -175,7 +177,7 @@ function leerMes(s: string): number | null {
   return t.length >= 3 && i >= 0 ? i + 1 : null
 }
 
-export async function planificarImportacion(archivo: ArrayBuffer): Promise<Plan> {
+export async function planificarImportacion(archivo: ArrayBuffer, reemplazar = false): Promise<Plan> {
   const wb = new ExcelJS.Workbook()
   try { await wb.xlsx.load(archivo) } catch { throw new Error('No pude leer el archivo. Súbelo como Excel (.xlsx).') }
   const hoja = wb.getWorksheet('Gastos') ?? wb.worksheets[0]
@@ -228,8 +230,8 @@ export async function planificarImportacion(archivo: ArrayBuffer): Promise<Plan>
     const pagado = ['si', 's', 'yes', 'x', '1', 'pagado'].includes(pg)
     const nota = crudo.nota.slice(0, 200)
 
-    // 1) Fila exportada con ID → actualizar ese pago
-    if (crudo.id) {
+    // 1) Fila exportada con ID → actualizar ese pago (salvo borrón y cuenta nueva: se crea de cero)
+    if (crudo.id && !reemplazar) {
       if (!porId(crudo.id)) return void error(`El ID ${crudo.id} no existe (¿plantilla de otra versión?). Bórralo para crearlo como nuevo.`)
       const p = pagosDe(anio).find(x => x.id === crudo.id) ?? null
       if (vistos.has(crudo.id)) return void error(`El ID ${crudo.id} está repetido`)
@@ -250,7 +252,7 @@ export async function planificarImportacion(archivo: ArrayBuffer): Promise<Plan>
       const clave = `${c.id}:${anio}-${mes}`
       if (vistos.has(clave)) return void error(`${c.nombre} aparece dos veces en ${MESES[mes - 1]} ${anio}`)
       vistos.add(clave)
-      const existente = pagosDe(anio).find(x => x.conceptoId === c.id && x.mes === mes)
+      const existente = reemplazar ? undefined : pagosDe(anio).find(x => x.conceptoId === c.id && x.mes === mes)
       if (existente) vistos.add(existente.id)
       // La persona configurada como "siempre" para este gasto no es una elección a mano
       const elegido = asignadoA === c.asignadoDefault && c.asignadoDefault !== 'ambos' ? null : asignadoA
@@ -271,11 +273,15 @@ export async function planificarImportacion(archivo: ArrayBuffer): Promise<Plan>
   })
 
   const meses = [...new Set(filas.map(f => `${f.anio}-${String(f.mes).padStart(2, '0')}`))].sort()
+  const borrar = reemplazar
+    ? meses.reduce((n, k) => { const [a, m] = k.split('-').map(Number); return n + pagosDe(a).filter(p => p.mes === m).length }, 0)
+    : 0
   return {
-    filas, errores, omitidas,
+    filas, errores, omitidas, reemplazar,
     resumen: {
       crear: filas.filter(f => f.accion === 'crear').length,
       actualizar: filas.filter(f => f.accion === 'actualizar').length,
+      borrar,
       total: filas.reduce((s, f) => s + f.monto, 0),
       meses: meses.map(k => { const [a, m] = k.split('-'); return `${MESES[Number(m) - 1].slice(0, 3)} ${a}` }),
     },
@@ -289,7 +295,7 @@ export async function planificarImportacion(archivo: ArrayBuffer): Promise<Plan>
  * anteriores). Los recurrentes se crean primero sin pagar, se reparten y recién después se marcan
  * pagados: un pago marcado como pagado ya no se mueve.
  */
-export function aplicarImportacion(plan: Plan): { creados: number; actualizados: number } {
+export function aplicarImportacion(plan: Plan): { creados: number; actualizados: number; borrados: number } {
   if (plan.errores.length) throw new Error('Corrige los errores antes de importar')
   const db = getDb()
   const porMes = new Map<string, FilaPlan[]>()
@@ -298,9 +304,13 @@ export function aplicarImportacion(plan: Plan): { creados: number; actualizados:
     porMes.set(k, [...(porMes.get(k) ?? []), f])
   }
   const marcarPagado = db.prepare("UPDATE pagos SET pagado = ?, fecha_pago = CASE WHEN ? = 1 THEN fecha_pago ELSE NULL END, actualizado_en = datetime('now') WHERE id = ?")
-  let creados = 0, actualizados = 0
+  let creados = 0, actualizados = 0, borrados = 0
 
   db.transaction(() => {
+    if (plan.reemplazar) {
+      const borrar = db.prepare('DELETE FROM pagos WHERE anio = ? AND mes = ?')
+      for (const k of porMes.keys()) { const [a, m] = k.split('-').map(Number); borrados += borrar.run(a, m).changes }
+    }
     for (const k of [...porMes.keys()].sort()) {
       const filas = porMes.get(k)!
       const [anio, mes] = k.split('-').map(Number)
@@ -333,5 +343,5 @@ export function aplicarImportacion(plan: Plan): { creados: number; actualizados:
       for (const [id, pagado] of ids) marcarPagado.run(pagado ? 1 : 0, pagado ? 1 : 0, id)
     }
   })()
-  return { creados, actualizados }
+  return { creados, actualizados, borrados }
 }

@@ -65,7 +65,7 @@ describe('plantilla Excel', () => {
     expect(plan.resumen).toMatchObject({ crear: 3 * 3 + 2 + 2, actualizar: 0 })
     expect(plan.filas.find(f => f.nombre === 'Regalo cumpleaños')?.aviso).toContain('ocasional')
 
-    expect(pl.aplicarImportacion(plan)).toEqual({ creados: 13, actualizados: 0 })
+    expect(pl.aplicarImportacion(plan)).toEqual({ creados: 13, actualizados: 0, borrados: 0 })
     const ene = repo.listPagos(ANIO, 1)
     expect(ene.every(p => p.pagado)).toBe(true)
     expect(ene.filter(p => p.tipo !== 'ocasional').every(p => p.asignadoA !== 'ambos')).toBe(true)
@@ -87,6 +87,26 @@ describe('plantilla Excel', () => {
     expect(despues).toHaveLength(antes.length)
     expect(despues.find(p => p.nombre === 'Nana' && p.mes === 1)?.monto).toBe(1600)
     for (const p of antes) expect(despues.find(x => x.id === p.id)?.asignadoA).toBe(p.asignadoA)
+  })
+
+  it('borrón y cuenta nueva: reemplaza los meses del archivo, sin duplicar ocasionales y recalculando pagados', async () => {
+    const enero = repo.listPagos(ANIO, 1)
+    const marzoAntes = repo.listPagos(ANIO, 3).length
+    // fijamos a mano un pago pagado de enero para ver que el borrón lo recalcula
+    repo.actualizarPago(enero.find(p => p.nombre === 'Hipoteca BCP')!.id, { asignadoA: 'ambos' })
+    const wb = await abrir(await pl.generarPlantilla(ANIO, 1, 2))
+    const h = wb.getWorksheet('Gastos')!
+    h.eachRow((r, n) => { if (n > 1) { r.getCell(1).value = ''; r.getCell(7).value = 'Auto' } })  // sin IDs, todo en Auto
+    const plan = await pl.planificarImportacion(await aBuffer(wb), true)
+    expect(plan.errores).toEqual([])
+    expect(plan.resumen.actualizar).toBe(0)
+    expect(plan.resumen.borrar).toBe(enero.length + repo.listPagos(ANIO, 2).length)
+    const r = pl.aplicarImportacion(plan)
+    expect(r.borrados).toBe(plan.resumen.borrar)
+    const eneroDespues = repo.listPagos(ANIO, 1)
+    expect(eneroDespues).toHaveLength(enero.length)
+    expect(eneroDespues.find(p => p.nombre === 'Hipoteca BCP')!.asignadoA).not.toBe('ambos')
+    expect(repo.listPagos(ANIO, 3)).toHaveLength(marzoAntes)  // marzo no estaba en el archivo: intacto
   })
 
   it('rechaza archivos que no son la plantilla', async () => {
