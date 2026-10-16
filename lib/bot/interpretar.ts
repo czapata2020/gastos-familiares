@@ -14,13 +14,14 @@ export const normalizar = (s: string) =>
 
 /**
  * Monto escrito como en Perú: "186", "186.50", "1,234.50", "320,5" (coma decimal), "S/ 85".
- * Si hay coma y punto, la coma es de miles. Si solo hay coma seguida de 1-2 dígitos, es decimal.
+ * Si hay coma y punto, el último es el decimal. Si solo hay coma seguida de 1-2 dígitos, es decimal.
  */
 export function leerMonto(token: string): number | null {
   const t = token.replace(/^s\/\.?/i, '').replace(/^(pen|usd|\$)/i, '')
   if (!/^\d[\d.,]*$/.test(t)) return null
   let n: string
-  if (t.includes(',') && t.includes('.')) n = t.replace(/,/g, '')
+  // Con coma y punto, el que va al final es el decimal: 1,234.50 (Perú) o 1.234,50 (Europa)
+  if (t.includes(',') && t.includes('.')) n = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '')
   else if (t.includes(',')) n = /,\d{1,2}$/.test(t) ? t.replace(/\.(?=\d{3})/g, '').replace(',', '.') : t.replace(/,/g, '')
   else n = t
   const v = Number(n)
