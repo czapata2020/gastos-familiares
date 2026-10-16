@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Copy, X } from 'lucide-react'
 import type { Asignacion, Persona } from '@/types'
 import type { EstadoVencimiento } from '@/lib/reparto'
 import { MESES } from '@/lib/reparto'
@@ -176,4 +176,54 @@ export function Sigla({ categoria }: { categoria: string }) {
       {c?.sigla ?? 'OT'}
     </span>
   )
+}
+
+/** Números de 5+ dígitos dentro de una nota (suministro, cuenta, CCI, celular). Admite guiones y espacios internos. */
+const NUMERO = /\d[\d -]{3,}\d/g
+
+function BotonCopiar({ texto, etiqueta }: { texto: string; etiqueta: string }) {
+  const [ok, setOk] = useState(false)
+  async function copiar(e: React.MouseEvent<HTMLButtonElement>) {
+    const boton = e.currentTarget
+    const limpio = texto.replace(/[\s-]/g, '')
+    try {
+      await navigator.clipboard.writeText(/^\d+$/.test(limpio) ? limpio : texto)
+    } catch {
+      // Sin permiso de portapapeles: dejamos el texto seleccionado para copiarlo a mano
+      const sel = window.getSelection()
+      const rango = document.createRange()
+      rango.selectNodeContents(boton.querySelector('span') ?? boton)
+      sel?.removeAllRanges(); sel?.addRange(rango)
+      return
+    }
+    setOk(true)
+    setTimeout(() => setOk(false), 1600)
+  }
+  return (
+    <button type="button" onClick={copiar} aria-label={`Copiar ${etiqueta}`}
+      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 align-baseline font-semibold transition ${
+        ok ? 'bg-good/15 text-good' : 'bg-surface-2 text-ink hover:bg-accent-soft hover:text-accent'}`}>
+      <span className="num select-all break-all">{ok ? 'Copiado' : texto}</span>
+      {ok ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5 text-ink-3" />}
+    </button>
+  )
+}
+
+/**
+ * Nota de referencia de un gasto (ej. "Código de Suministro 844606") con botón de copiar.
+ * Cada número se copia por separado y sin espacios ni guiones; si no hay números, se copia la nota entera.
+ */
+export function NotaCopiable({ nota }: { nota: string }) {
+  const numeros = [...nota.matchAll(NUMERO)]
+  // Sin números no hay nada útil que pegar en el banco: se muestra como texto
+  if (!numeros.length) return <p className="text-xs text-ink-2">{nota}</p>
+  const partes: React.ReactNode[] = []
+  let desde = 0
+  numeros.forEach((m, i) => {
+    if (m.index! > desde) partes.push(<span key={`t${i}`}>{nota.slice(desde, m.index)}</span>)
+    partes.push(<BotonCopiar key={`n${i}`} texto={m[0].trim()} etiqueta={m[0].trim()} />)
+    desde = m.index! + m[0].length
+  })
+  if (desde < nota.length) partes.push(<span key="fin">{nota.slice(desde)}</span>)
+  return <p className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-ink-2">{partes}</p>
 }

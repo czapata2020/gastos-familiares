@@ -6,7 +6,7 @@ import type { EstadoMes, FilaMes } from '@/types'
 import type { Metricas } from '@/lib/metricas'
 import { api, dinero, useDatos, usePeriodo } from '@/lib/cliente'
 import { dividir, estadoFila, MESES } from '@/lib/reparto'
-import { Avatar, BarraReparto, btnPrimario, Cargando, Encabezado, ErrorCarga, MesSelector, nombreCorto, PillEstado, Seccion, Sigla, Tarjeta, useAviso } from '@/components/ui'
+import { Avatar, BarraReparto, btnPrimario, Cargando, Encabezado, ErrorCarga, MesSelector, nombreCorto, NotaCopiable, PillEstado, Seccion, Sigla, Tarjeta, useAviso } from '@/components/ui'
 
 export default function Inicio() {
   const { anio, mes, mover, query } = usePeriodo()
@@ -100,11 +100,12 @@ export default function Inicio() {
                 const monto = f.pago?.monto ?? f.montoSugerido
                 const asign = f.pago?.asignadoA ?? f.asignacionSugerida ?? f.concepto?.asignadoDefault ?? 'ambos'
                 return (
-                  <div key={f.key} className="flex items-center gap-3 border-t border-line py-3 first:border-0">
+                  <div key={f.key} className="grid gap-1.5 border-t border-line py-3 first:border-0">
+                  <div className="flex items-center gap-3">
                     <Sigla categoria={f.categoria} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[15px] font-semibold">{f.nombre}</p>
-                      {f.pago?.nota && <p className="truncate text-xs text-ink-2">{f.pago.nota}</p>}
+                      {f.pago?.nota && <p className="mt-0.5 truncate text-xs text-ink-3">{f.pago.nota}</p>}
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-3">
                         <PillEstado estado={estado} dia={f.diaVencimiento} />
                         <span>{asign === 'ambos' ? 'Ambos' : nombreCorto(personas[asign === '1' ? 0 : 1])}</span>
@@ -115,6 +116,8 @@ export default function Inicio() {
                       className="grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 border-line text-ink-3 transition hover:border-good hover:text-good">
                       <Check className="h-4 w-4" strokeWidth={3} />
                     </button>
+                  </div>
+                  {f.concepto?.nota && <div className="min-w-0 pl-[52px]"><NotaCopiable nota={f.concepto.nota} /></div>}
                   </div>
                 )
               })}
