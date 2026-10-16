@@ -334,8 +334,11 @@ function HojaConcepto({ valor, onCerrar, personas, moneda, auto, onGuardado, avi
             <SelectorMeses titulo="Meses con cuota doble" ayuda="El monto se duplica esos meses (gratificaciones, julio y diciembre)." valor={f.mesesCuotaDoble ?? []} onToggle={m => alternar('mesesCuotaDoble', m)} />
           </>
         )}
-        <label className={labelCls}>Nota o referencia
-          <input id="co-nota" className={inputCls} value={f.nota ?? ''} onChange={e => setF({ ...f, nota: e.target.value })} placeholder="Ej. N° de suministro, cuenta" />
+        <label className={labelCls}>Referencia para pagar
+          <input id="co-nota" className={inputCls} value={f.nota ?? ''} onChange={e => setF({ ...f, nota: e.target.value })} placeholder="Código de suministro 844606" />
+          <span className="text-xs font-normal text-ink-3">
+            Formato: tipo, número y detalle opcional. Ej.: <i>Código de suministro 844606</i> · <i>Cuenta BCP 191-1234567-0-12</i> · <i>CCI Interbank 003…</i> · <i>Yape 990999421 · Sra. Margarita</i>. En Inicio el número se copia con un toque.
+          </span>
         </label>
         {f.id && (
           <label className="flex items-center gap-2 text-sm">
