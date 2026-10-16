@@ -10,6 +10,8 @@ export interface Persona {
   id: PersonaId
   nombre: string
   email: string
+  /** WhatsApp con código de país, solo dígitos (ej. 51987654321). */
+  telefono: string
 }
 
 /** Salarios vigentes desde un mes (YYYY-MM). El último periodo con desde <= mes aplica. */
