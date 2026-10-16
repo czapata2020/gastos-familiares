@@ -462,7 +462,7 @@ interface PlanImport {
   filas: { fila: number; accion: 'crear' | 'actualizar'; nombre: string; anio: number; mes: number; monto: number; aviso: string | null }[]
   errores: { fila: number; mensaje: string }[]
   omitidas: number
-  resumen: { crear: number; actualizar: number; total: number; meses: string[] }
+  resumen: { crear: number; actualizar: number; borrar: number; total: number; meses: string[] }
 }
 
 function SeccionPlantilla({ aviso, moneda }: { aviso: (m: string, e?: boolean) => void; moneda: string }) {
@@ -473,21 +473,23 @@ function SeccionPlantilla({ aviso, moneda }: { aviso: (m: string, e?: boolean) =
   const [archivo, setArchivo] = useState<File | null>(null)
   const [plan, setPlan] = useState<PlanImport | null>(null)
   const [ocupado, setOcupado] = useState(false)
+  const [reemplazar, setReemplazar] = useState(false)
   const anios = [hoy.getFullYear() + 1, hoy.getFullYear(), hoy.getFullYear() - 1, hoy.getFullYear() - 2, hoy.getFullYear() - 3]
 
-  async function subir(modo: 'previsualizar' | 'aplicar', f = archivo) {
+  async function subir(modo: 'previsualizar' | 'aplicar', f = archivo, borron = reemplazar) {
     if (!f) return
     setOcupado(true)
     try {
       const fd = new FormData()
       fd.append('archivo', f)
       fd.append('modo', modo)
+      if (borron) fd.append('reemplazar', '1')
       const res = await fetch('/api/importar', { method: 'POST', body: fd })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`)
       if (modo === 'previsualizar') setPlan(data)
       else {
-        aviso(`Importado: ${data.creados} nuevos, ${data.actualizados} actualizados`)
+        aviso(`Importado: ${data.creados} nuevos, ${data.actualizados} actualizados${data.borrados ? `, ${data.borrados} reemplazados` : ''}`)
         setPlan(null); setArchivo(null)
       }
     } catch (e) { aviso((e as Error).message, true) } finally { setOcupado(false) }
@@ -529,11 +531,21 @@ function SeccionPlantilla({ aviso, moneda }: { aviso: (m: string, e?: boolean) =
             <input id="pl-archivo" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only"
               onChange={e => { const f = e.target.files?.[0] ?? null; setArchivo(f); setPlan(null); if (f) void subir('previsualizar', f); e.target.value = '' }} />
           </label>
+          <label className="flex items-start gap-2">
+            <input id="pl-reemplazar" type="checkbox" checked={reemplazar} className="mt-0.5 h-5 w-5 shrink-0 accent-[rgb(var(--accent))]"
+              onChange={e => { setReemplazar(e.target.checked); if (archivo) void subir('previsualizar', archivo, e.target.checked) }} />
+            <span><b>Borrón y cuenta nueva</b> en los meses del archivo: borra lo ya registrado en esos meses y carga solo lo que dice la plantilla. Los IDs se ignoran y &ldquo;Auto&rdquo; se recalcula para todos.</span>
+          </label>
           {ocupado && <p className="text-ink-3">Revisando…</p>}
         </div>
 
         {plan && (
           <div className="grid gap-3 rounded-xl bg-surface-2 p-3">
+            {plan.resumen.borrar > 0 && (
+              <p className="rounded-lg bg-warn/10 p-2.5 font-semibold text-warn">
+                Se borrarán {plan.resumen.borrar} pagos ya registrados en {plan.resumen.meses.join(', ')} y se reemplazarán por lo del archivo.
+              </p>
+            )}
             <div className="grid grid-cols-3 gap-2 text-center">
               <div><p className="num font-display text-xl font-bold">{plan.resumen.crear}</p><p className="text-xs text-ink-3">nuevos</p></div>
               <div><p className="num font-display text-xl font-bold">{plan.resumen.actualizar}</p><p className="text-xs text-ink-3">se actualizan</p></div>
@@ -560,7 +572,7 @@ function SeccionPlantilla({ aviso, moneda }: { aviso: (m: string, e?: boolean) =
             )}
             <div className="flex flex-wrap gap-2">
               <button type="button" className={btnPrimario} disabled={ocupado || plan.errores.length > 0 || plan.filas.length === 0} onClick={() => subir('aplicar')}>
-                Importar {plan.filas.length} filas
+                {plan.resumen.borrar > 0 ? `Reemplazar e importar ${plan.filas.length} filas` : `Importar ${plan.filas.length} filas`}
               </button>
               <button type="button" className={btnSecundario} onClick={() => { setPlan(null); setArchivo(null) }}>Cancelar</button>
             </div>
