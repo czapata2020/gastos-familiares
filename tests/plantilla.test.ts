@@ -109,6 +109,28 @@ describe('plantilla Excel', () => {
     expect(repo.listPagos(ANIO, 3)).toHaveLength(marzoAntes)  // marzo no estaba en el archivo: intacto
   })
 
+  it('un gasto renombrado después de descargar la plantilla sigue siendo recurrente', async () => {
+    const wb = await abrir(await pl.generarPlantilla(ANIO, 4, 4))
+    const nana = repo.listConceptos().find(c => c.nombre === 'Nana')!
+    repo.guardarConcepto({ ...nana, nombre: 'Nana Margarita' })        // renombrado en Ajustes
+    const h = wb.getWorksheet('Gastos')!
+    h.addRow(['', ANIO, 'Abril', 'Pasajes Cusco', 'Transporte', 900, '', 'Sí', ''])
+    const plan = await pl.planificarImportacion(await aBuffer(wb))
+    const filaNana = plan.filas.find(f => f.conceptoId === nana.id)!
+    expect(filaNana).toMatchObject({ tipo: 'fijo', nombre: 'Nana Margarita', aviso: 'Se toma como "Nana Margarita"' })
+    expect(plan.nuevos).toEqual(['Pasajes Cusco'])
+  })
+
+  it('recalcular un mes incluye los pagados y conserva que están pagados', async () => {
+    const pagosMar = () => repo.listPagos(ANIO, 3).filter(p => p.tipo !== 'ocasional')
+    for (const p of pagosMar()) repo.actualizarPago(p.id, { asignadoA: '1', pagado: true })   // todo a mano a la persona 1
+    expect(pagosMar().every(p => p.asignadoA === '1' && p.asignacionManual && p.pagado)).toBe(true)
+    repo.automatizarMes(ANIO, 3, true)
+    const despues = pagosMar()
+    expect(despues.every(p => p.pagado && !p.asignacionManual)).toBe(true)
+    expect(despues.some(p => p.asignadoA === '2')).toBe(true)
+  })
+
   it('rechaza archivos que no son la plantilla', async () => {
     await expect(pl.planificarImportacion(new TextEncoder().encode('hola').buffer as ArrayBuffer)).rejects.toThrow('.xlsx')
     const wb = new ExcelJS.Workbook(); wb.addWorksheet('x').addRow(['a', 'b'])
