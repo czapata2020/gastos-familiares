@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, ChevronLeft, ChevronRight, Copy, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Copy, RefreshCw, X } from 'lucide-react'
+import { recargarTodo } from '@/lib/cliente'
 import type { Asignacion, Persona, PersonaId } from '@/types'
 import type { EstadoVencimiento } from '@/lib/reparto'
 import { MESES } from '@/lib/reparto'
@@ -18,9 +19,12 @@ export const btnSecundario =
 export function Encabezado({ titulo, children }: { titulo: string; children?: React.ReactNode }) {
   return (
     <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <h1 className="flex items-center gap-2.5 font-display text-[26px] font-bold leading-tight md:text-3xl">
-        <span className="md:hidden"><Logo size={30} /></span>{titulo}
-      </h1>
+      <div className="flex items-center gap-2">
+        <h1 className="flex items-center gap-2.5 font-display text-[26px] font-bold leading-tight md:text-3xl">
+          <span className="md:hidden"><Logo size={30} /></span>{titulo}
+        </h1>
+        <BotonActualizar />
+      </div>
       {children}
     </header>
   )
@@ -269,5 +273,17 @@ export function FiltroMios({ solo, onCambio, persona }: { solo: boolean; onCambi
         <i className={`h-2 w-2 rounded-full ${color}`} />Míos
       </button>
     </div>
+  )
+}
+
+/** Vuelve a cargar los datos (en el acceso directo del celular no existe "jalar para actualizar"). */
+export function BotonActualizar() {
+  const [girando, setGirando] = useState(false)
+  return (
+    <button type="button" aria-label="Actualizar" title="Actualizar"
+      onClick={() => { setGirando(true); recargarTodo(); setTimeout(() => setGirando(false), 700) }}
+      className="grid h-9 w-9 place-items-center rounded-full text-ink-3 transition hover:bg-surface-2 hover:text-ink">
+      <RefreshCw className={`h-[18px] w-[18px] ${girando ? 'animate-spin' : ''}`} />
+    </button>
   )
 }

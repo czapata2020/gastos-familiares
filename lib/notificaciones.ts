@@ -10,7 +10,7 @@ import { enviarPlantilla, estadoPlantilla, whatsappConfigurado } from './whatsap
  *  - WhatsApp: a cada persona, solo lo que le toca pagar (vence en 3 días, vence hoy, venció ayer).
  *    Usa la plantilla aprobada por Meta "recordatorio_pagos" (los mensajes que inicia el bot la exigen).
  *  - Correo (opcional): a la casa, 3 días antes y el día siguiente al vencimiento. SMTP_* en el servidor.
- * Cada aviso se envía una sola vez (tabla notificaciones_enviadas).
+ * Cada aviso se envía una sola vez (tabla avisos_enviados).
  */
 
 export const PLANTILLA_RECORDATORIO = 'recordatorio_pagos'
@@ -115,9 +115,10 @@ export function vencimientosDelDia(hoy = new Date()) {
 /** Envía los recordatorios de hoy. Idempotente: cada aviso sale una sola vez. Devuelve cuántos mensajes envió. */
 export async function revisarVencimientos(hoy = new Date()): Promise<{ whatsapp: number; correo: number }> {
   const db = getDb()
-  db.exec(`CREATE TABLE IF NOT EXISTS notificaciones_enviadas (clave TEXT PRIMARY KEY, enviado_en TEXT NOT NULL DEFAULT (datetime('now')))`)
-  const yaEnviado = db.prepare('SELECT 1 FROM notificaciones_enviadas WHERE clave = ?')
-  const marcar = db.prepare('INSERT OR IGNORE INTO notificaciones_enviadas (clave) VALUES (?)')
+  // Tabla propia: "notificaciones_enviadas" quedó de la versión 1 con otras columnas
+  db.exec(`CREATE TABLE IF NOT EXISTS avisos_enviados (clave TEXT PRIMARY KEY, enviado_en TEXT NOT NULL DEFAULT (datetime('now')))`)
+  const yaEnviado = db.prepare('SELECT 1 FROM avisos_enviados WHERE clave = ?')
+  const marcar = db.prepare('INSERT OR IGNORE INTO avisos_enviados (clave) VALUES (?)')
   const { anio, mes, moneda, items } = vencimientosDelDia(hoy)
   const enviados = { whatsapp: 0, correo: 0 }
   const fecha = (d: number) => `${String(d).padStart(2, '0')}/${String(mes).padStart(2, '0')}`

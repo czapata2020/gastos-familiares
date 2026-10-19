@@ -30,8 +30,26 @@ export function useDatos<T>(url: string) {
     }
   }, [url])
   useEffect(() => { void recargar() }, [recargar])
+
+  // Se vuelve a pedir al tocar "Actualizar" o al volver a la app (p. ej. después de registrar por WhatsApp)
+  useEffect(() => {
+    const alVolver = () => { if (document.visibilityState === 'visible') void recargar() }
+    const alPedir = () => void recargar()
+    document.addEventListener('visibilitychange', alVolver)
+    window.addEventListener('pageshow', alPedir)
+    window.addEventListener(EVENTO_RECARGAR, alPedir)
+    return () => {
+      document.removeEventListener('visibilitychange', alVolver)
+      window.removeEventListener('pageshow', alPedir)
+      window.removeEventListener(EVENTO_RECARGAR, alPedir)
+    }
+  }, [recargar])
   return { data, error, recargar, setData }
 }
+
+export const EVENTO_RECARGAR = 'cuentas-claras:recargar'
+/** Pide a todas las pantallas abiertas que vuelvan a cargar sus datos. */
+export function recargarTodo() { window.dispatchEvent(new Event(EVENTO_RECARGAR)) }
 
 /** Mes seleccionado, compartido entre pantallas vía ?p=YYYY-MM. */
 export function usePeriodo() {
