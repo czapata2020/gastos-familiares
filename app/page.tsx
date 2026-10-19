@@ -6,13 +6,14 @@ import type { EstadoMes, FilaMes } from '@/types'
 import type { Metricas } from '@/lib/metricas'
 import { api, dinero, useDatos, usePeriodo } from '@/lib/cliente'
 import { dividir, estadoFila, MESES } from '@/lib/reparto'
-import { Avatar, BarraReparto, btnPrimario, Cargando, Encabezado, ErrorCarga, MesSelector, nombreCorto, NotaCopiable, PillEstado, Seccion, Sigla, Tarjeta, useAviso } from '@/components/ui'
+import { Avatar, BarraReparto, btnPrimario, Cargando, Encabezado, ErrorCarga, MesSelector, nombreCorto, NotaCopiable, PillEstado, Seccion, Sigla, Tarjeta, useAviso, EtiquetaPersona, FiltroMios, tintePersona, useSoloMios } from '@/components/ui'
 
 export default function Inicio() {
   const { anio, mes, mover, query } = usePeriodo()
   const { data, error, recargar, setData } = useDatos<EstadoMes>(`/api/mes?anio=${anio}&mes=${mes}`)
   const met = useDatos<{ metricas: Metricas; anterior: Metricas }>(`/api/metricas?anio=${anio}&mes=${mes}`)
   const { aviso, nodo } = useAviso()
+  const [soloMios, setSoloMios] = useSoloMios()
 
   const enc = <Encabezado titulo="Inicio"><MesSelector anio={anio} mes={mes} mover={mover} /></Encabezado>
   if (error) return <>{enc}<ErrorCarga msg={error} reintentar={recargar} /></>
@@ -27,7 +28,9 @@ export default function Inicio() {
     total += f.pago!.monto; a += x; b += y
     if (f.pago!.pagado) pagado += f.pago!.monto
   }
-  const pendientes = data.filas.filter(f => !f.pago?.pagado)
+  const yo = data.yo ?? null
+  const quienDe = (f: FilaMes) => f.pago?.asignadoA ?? f.asignacionSugerida ?? f.concepto?.asignadoDefault ?? 'ambos'
+  const pendientes = data.filas.filter(f => !f.pago?.pagado && (!soloMios || !yo || quienDe(f) === yo || quienDe(f) === 'ambos'))
   const orden = { vencido: 0, 'por-vencer': 1, pendiente: 2, 'sin-registrar': 3, pagado: 4 }
   pendientes.sort((x, y) => orden[estadoFila(x, anio, mes)] - orden[estadoFila(y, anio, mes)])
 
@@ -75,8 +78,8 @@ export default function Inicio() {
             const real = i === 0 ? a : b
             const justo = i === 0 ? pct1 : 100 - pct1
             return (
-              <Tarjeta key={p.id} className="grid gap-1 !p-3.5">
-                <div className="flex items-center gap-2 text-sm font-semibold text-ink-2"><Avatar persona={p} size={22} />{nombreCorto(p)}</div>
+              <Tarjeta key={p.id} className={`grid gap-1 !p-3.5 ${tintePersona(p.id)}`}>
+                <div className="flex items-center gap-2 text-sm font-semibold text-ink-2"><Avatar persona={p} size={22} />{nombreCorto(p)}{p.id === yo && <span className="text-xs font-normal text-ink-3">(tú)</span>}</div>
                 <p className="num font-display text-[22px] font-bold">{dinero(real, mon)}</p>
                 <p className="num text-xs text-ink-3">{total ? ((real / total) * 100).toFixed(0) : 0}% real · {justo.toFixed(0)}% por salario</p>
               </Tarjeta>
@@ -92,16 +95,16 @@ export default function Inicio() {
             <Link href={`/ajustes${query}`} className={`${btnPrimario} justify-self-center`}>Ir a Ajustes <ArrowRight className="h-4 w-4" /></Link>
           </Tarjeta>
         ) : (
-          <Seccion titulo="Por pagar" extra={`${pendientes.length} pendientes`}>
+          <Seccion titulo="Por pagar" extra={<FiltroMios solo={soloMios} onCambio={setSoloMios} persona={personas.find(p => p.id === yo) ?? null} />}>
             <div data-tour="pendientes">
-            <Tarjeta className="!py-1">
+            <Tarjeta className="overflow-hidden !py-1">
               {pendientes.length === 0 && <p className="py-6 text-center text-sm text-ink-2">Todo pagado este mes.</p>}
               {pendientes.map((f, idx) => {
                 const estado = estadoFila(f, anio, mes)
                 const monto = f.pago?.monto ?? f.montoSugerido
-                const asign = f.pago?.asignadoA ?? f.asignacionSugerida ?? f.concepto?.asignadoDefault ?? 'ambos'
+                const asign = quienDe(f)
                 return (
-                  <div key={f.key} data-tour={idx === 0 ? 'pendiente' : undefined} className="grid gap-1.5 border-t border-line py-3 first:border-0">
+                  <div key={f.key} data-tour={idx === 0 ? 'pendiente' : undefined} className={`-mx-4 grid gap-1.5 border-t border-line px-4 py-3 first:border-0 ${tintePersona(asign)}`}>
                   <div className="flex items-center gap-3">
                     <Sigla categoria={f.categoria} />
                     <div className="min-w-0 flex-1">
@@ -109,7 +112,7 @@ export default function Inicio() {
                       {f.pago?.nota && <p className="mt-0.5 truncate text-xs text-ink-3">{f.pago.nota}</p>}
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-3">
                         <PillEstado estado={estado} dia={f.diaVencimiento} />
-                        <span>{asign === 'ambos' ? 'Ambos' : nombreCorto(personas[asign === '1' ? 0 : 1])}</span>
+                        <EtiquetaPersona a={asign} personas={personas} yo={yo} />
                       </div>
                     </div>
                     <span className={`num text-[15px] font-bold ${monto == null ? 'text-ink-3' : ''}`}>{monto == null ? '—' : dinero(monto, mon)}</span>

@@ -1,4 +1,3 @@
-import 'server-only'
 import type { Asignacion, Categoria, Concepto, Config, EstadoMes, Pago, Persona, PersonaId, Reparto, TipoConcepto } from '@/types'
 import { getDb, uid } from './db'
 import { armarFilas, asignacionAutomatica, dividir, porcentajePersona1, repartoVigente } from './reparto'

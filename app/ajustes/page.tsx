@@ -438,40 +438,81 @@ function SeccionHogar({ ajustes, onCambio, aviso }: { ajustes: Ajustes; onCambio
   )
 }
 
-// ── Recordatorios por correo ──────────────────────────────────────────────────
+// ── Recordatorios (WhatsApp y correo) ────────────────────────────────────────
+
+interface EstadoNotif {
+  activas: boolean; smtpConfigurado: boolean; destinatarios: string[]
+  whatsapp: { activas: boolean; configurado: boolean; plantilla: string; personas: { id: '1' | '2'; nombre: string; conWhatsApp: boolean }[] }
+}
+
+const ESTADO_PLANTILLA: Record<string, { txt: string; cls: string }> = {
+  APPROVED: { txt: 'Aprobada por Meta', cls: 'text-good' },
+  PENDING: { txt: 'En revisión por Meta (puede tardar unas horas)', cls: 'text-warn' },
+  REJECTED: { txt: 'Rechazada por Meta', cls: 'text-bad' },
+}
+
+function Interruptor({ on, onClick, etiqueta }: { on: boolean; onClick: () => void; etiqueta: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={etiqueta} onClick={onClick}
+      className={`relative h-7 w-12 shrink-0 rounded-full transition ${on ? 'bg-accent' : 'bg-line'}`}>
+      <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-surface shadow transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
+    </button>
+  )
+}
 
 function SeccionNotificaciones({ aviso }: { aviso: (m: string, e?: boolean) => void }) {
-  const { data, setData } = useDatos<{ activas: boolean; smtpConfigurado: boolean; destinatarios: string[] }>('/api/notificaciones')
-  const [probando, setProbando] = useState(false)
+  const { data, setData } = useDatos<EstadoNotif>('/api/notificaciones')
+  const [probando, setProbando] = useState<string | null>(null)
   if (!data) return null
+  const wa = data.whatsapp
+  const plantilla = ESTADO_PLANTILLA[wa.plantilla] ?? { txt: `Estado: ${wa.plantilla}`, cls: 'text-ink-3' }
 
-  async function alternar() {
-    try {
-      setData(await api('/api/notificaciones', 'PUT', { activas: !data!.activas }))
-      aviso(data!.activas ? 'Recordatorios desactivados' : 'Recordatorios activados')
-    } catch (e) { aviso((e as Error).message, true) }
+  async function cambiar(cuerpo: object, msg: string) {
+    try { setData(await api('/api/notificaciones', 'PUT', cuerpo)); aviso(msg) } catch (e) { aviso((e as Error).message, true) }
   }
-  async function probar() {
-    setProbando(true)
-    try { await api('/api/notificaciones', 'POST'); aviso('Correo de prueba enviado') } catch (e) { aviso((e as Error).message, true) } finally { setProbando(false) }
+  async function probar(cuerpo: object | undefined, clave: string, msg: string) {
+    setProbando(clave)
+    try { await api('/api/notificaciones', 'POST', cuerpo ?? {}); aviso(msg) } catch (e) { aviso((e as Error).message, true) } finally { setProbando(null) }
   }
 
   return (
-    <Seccion titulo="Recordatorios por correo">
+    <Seccion titulo="Recordatorios de pago">
       <Tarjeta className="grid gap-3 text-sm">
         <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="font-semibold">Avisar vencimientos</p>
-            <p className="text-ink-3">3 días antes y el día siguiente si sigue sin pagar.</p>
+          <div className="min-w-0">
+            <p className="font-semibold">Por WhatsApp</p>
+            <p className="text-ink-3">Todos los días a las 8:00, a cada uno solo lo que le toca: lo que vence en 3 días, hoy, o venció ayer sin pagar.</p>
           </div>
-          <button type="button" role="switch" aria-checked={data.activas} aria-label="Avisar vencimientos" onClick={alternar}
-            className={`relative h-7 w-12 shrink-0 rounded-full transition ${data.activas ? 'bg-accent' : 'bg-line'}`}>
-            <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-surface shadow transition-all ${data.activas ? 'left-[22px]' : 'left-0.5'}`} />
-          </button>
+          <Interruptor on={wa.activas} etiqueta="Recordatorios por WhatsApp"
+            onClick={() => cambiar({ whatsapp: !wa.activas }, wa.activas ? 'Recordatorios por WhatsApp desactivados' : 'Recordatorios por WhatsApp activados')} />
         </div>
-        <p className="text-ink-3">Se envían a: {data.destinatarios.join(', ') || 'nadie (agrega correos en Hogar)'}</p>
-        {!data.smtpConfigurado && <p className="rounded-xl bg-warn/10 px-3 py-2 text-warn">Falta configurar el servidor de correo (SMTP) en el servidor. Mientras tanto no se envía nada.</p>}
-        {data.smtpConfigurado && <button type="button" className={`${btnSecundario} justify-self-start`} disabled={probando} onClick={probar}>Enviar correo de prueba</button>}
+        <p className={`text-xs font-semibold ${plantilla.cls}`}>Plantilla del mensaje: {plantilla.txt}</p>
+        {wa.plantilla === 'APPROVED' && (
+          <div className="flex flex-wrap gap-2">
+            {wa.personas.filter(p => p.conWhatsApp).map(p => (
+              <button key={p.id} type="button" className={btnSecundario} disabled={probando !== null}
+                onClick={() => probar({ canal: 'whatsapp', personaId: p.id }, `wa${p.id}`, `Prueba enviada al WhatsApp de ${p.nombre.split(' ')[0]}`)}>
+                {probando === `wa${p.id}` ? 'Enviando…' : `Probar con ${p.nombre.split(' ')[0]}`}
+              </button>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-ink-3">Meta cobra unos centavos por cada aviso que inicia el bot. Las respuestas cuando ustedes le escriben no tienen costo.</p>
+
+        <div className="flex items-center justify-between gap-4 border-t border-line pt-3">
+          <div className="min-w-0">
+            <p className="font-semibold">Por correo</p>
+            <p className="text-ink-3">A {data.destinatarios.join(', ') || 'nadie (agrega correos en Hogar)'}: 3 días antes y el día siguiente.</p>
+          </div>
+          <Interruptor on={data.activas} etiqueta="Recordatorios por correo"
+            onClick={() => cambiar({ activas: !data.activas }, data.activas ? 'Correos desactivados' : 'Correos activados')} />
+        </div>
+        {!data.smtpConfigurado && data.activas && <p className="rounded-xl bg-warn/10 px-3 py-2 text-warn">Falta configurar el servidor de correo (SMTP). Mientras tanto no se envían correos.</p>}
+        {data.smtpConfigurado && data.activas && (
+          <button type="button" className={`${btnSecundario} justify-self-start`} disabled={probando !== null} onClick={() => probar(undefined, 'mail', 'Correo de prueba enviado')}>
+            {probando === 'mail' ? 'Enviando…' : 'Enviar correo de prueba'}
+          </button>
+        )}
       </Tarjeta>
     </Seccion>
   )

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { BarChart3, Home, ListChecks, Settings } from 'lucide-react'
 import Tutorial from './Tutorial'
+import { Marca } from './Logo'
 
 const NAV = [
   { href: '/', label: 'Inicio', icon: Home },
@@ -26,10 +27,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-dvh md:pl-56">
       {/* Escritorio: barra lateral */}
       <aside className="fixed inset-y-0 left-0 hidden w-56 flex-col border-r border-line bg-surface px-3 py-6 md:flex">
-        <div className="mb-8 flex items-center gap-2.5 px-3">
-          <Logo />
-          <span className="font-display text-lg font-bold leading-none">Gastos<br /><span className="text-sm font-medium text-ink-3">familiares</span></span>
-        </div>
+        <div className="mb-8 px-3"><Marca /></div>
         <nav className="grid gap-1">
           {NAV.map(({ href, label, icon: Icon }) => {
             const activo = pathname === href
@@ -66,15 +64,5 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         })}
       </nav>
     </div>
-  )
-}
-
-export function Logo({ size = 32 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="9" className="fill-accent" />
-      <path d="M9 21.5V12a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v9.5" className="stroke-accent-ink" strokeWidth="2.2" fill="none" strokeLinecap="round" />
-      <path d="M16 10v13.5M9 23.5h14" className="stroke-accent-ink" strokeWidth="2.2" fill="none" strokeLinecap="round" />
-    </svg>
   )
 }

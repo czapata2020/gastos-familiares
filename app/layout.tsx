@@ -8,9 +8,9 @@ const display = Bricolage_Grotesque({ subsets: ['latin'], weight: ['500', '700']
 const body = Figtree({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-body' })
 
 export const metadata: Metadata = {
-  title: 'Gastos Familiares',
-  description: 'Gastos compartidos del hogar, repartidos por salario',
-  appleWebApp: { capable: true, title: 'Gastos', statusBarStyle: 'default' },
+  title: 'Cuentas Claras',
+  description: 'Los gastos del hogar, repartidos según el ingreso de cada uno',
+  appleWebApp: { capable: true, title: 'Cuentas Claras', statusBarStyle: 'default' },
 }
 
 export const viewport: Viewport = {

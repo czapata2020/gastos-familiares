@@ -9,7 +9,7 @@ import { dividir, estadoFila, montoFila } from '@/lib/reparto'
 import { CATEGORIAS } from '@/lib/categorias'
 import {
   btnPrimario, btnSecundario, Cargando, Chips, Encabezado, ErrorCarga, Hoja, inputCls, MesSelector, nombreCorto,
-  PillEstado, Seccion, Sigla, Tarjeta, useAviso,
+  PillEstado, Seccion, Sigla, Tarjeta, useAviso, FiltroMios, tintePersona, useSoloMios,
 } from '@/components/ui'
 
 const TITULOS = { fijo: 'Fijos', variable: 'Variables', ocasional: 'Ocasionales' } as const
@@ -21,6 +21,7 @@ export default function Registrar() {
   const [hojaAbierta, setHojaAbierta] = useState(false)
   const [ocupado, setOcupado] = useState(false)
   const [confirmarRecalculo, setConfirmarRecalculo] = useState(false)
+  const [soloMios, setSoloMios] = useSoloMios()
 
   const enc = <Encabezado titulo="Registrar"><MesSelector anio={anio} mes={mes} mover={mover} /></Encabezado>
   if (error) return <>{enc}<ErrorCarga msg={error} reintentar={recargar} /></>
@@ -57,8 +58,11 @@ export default function Registrar() {
   }
   const rTotal = r1 + r2
 
+  const yo = data.yo ?? null
+  const quienDe = (f: FilaMes) => f.pago?.asignadoA ?? f.asignacionSugerida ?? f.concepto?.asignadoDefault ?? 'ambos'
+  const visible = (f: FilaMes) => !soloMios || !yo || quienDe(f) === yo || quienDe(f) === 'ambos'
   const grupos = (['fijo', 'variable', 'ocasional'] as const)
-    .map(t => ({ tipo: t, filas: data.filas.filter(f => f.tipo === t) }))
+    .map(t => ({ tipo: t, filas: data.filas.filter(f => f.tipo === t && visible(f)) }))
     .filter(g => g.filas.length)
 
   return (
@@ -66,6 +70,12 @@ export default function Registrar() {
       {enc}
       {nodo}
       <div className="grid gap-5">
+        {yo && (
+          <div className="-mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs text-ink-3">Cada gasto lleva el color de quien lo paga</span>
+            <FiltroMios solo={soloMios} onCambio={setSoloMios} persona={personas.find(p => p.id === yo) ?? null} />
+          </div>
+        )}
         {sinRegistrar.length > 0 && (
           <Tarjeta className="grid gap-3 !bg-accent-soft ring-0">
             <p className="text-sm"><b>{sinRegistrar.length} gastos recurrentes</b> sin registrar en este mes. Puedes completarlos de una vez y luego ajustar.</p>
@@ -123,7 +133,7 @@ export default function Registrar() {
 
         {grupos.map(g => (
           <Seccion key={g.tipo} titulo={TITULOS[g.tipo]} extra={`${g.filas.filter(f => f.pago?.pagado).length}/${g.filas.length} pagados`}>
-            <Tarjeta className="!py-0">
+            <Tarjeta className="overflow-hidden !py-0">
               {g.filas.map(f => (
                 <FilaEditable key={f.key} f={f} anio={anio} mes={mes} personas={personas} auto={auto}
                   onCambio={recargar} onError={m => aviso(m, true)} />
@@ -242,7 +252,7 @@ function FilaEditable({ f, anio, mes, personas, auto, onCambio, onError }: {
     : f.concepto!.asignadoDefault !== 'ambos' ? 'fijo' : 'auto'
 
   return (
-    <div className={`grid gap-2 border-t border-line py-3 first:border-0 ${guardando ? 'opacity-70' : ''}`}>
+    <div className={`-mx-4 grid gap-2 border-t border-line px-4 py-3 transition-colors first:border-0 ${tintePersona(asign)} ${guardando ? 'opacity-70' : ''}`}>
       <div className="flex items-center gap-3">
         <Sigla categoria={f.categoria} />
         <div className="min-w-0 flex-1">

@@ -43,10 +43,26 @@ describe('bot de WhatsApp', () => {
     expect(pagoDe('Luz del Sur')!.asignadoA).not.toBe('ambos')
   })
 
+  it('se puede cambiar la persona antes de guardar, y "cancelar" descarta', () => {
+    const [p] = bot.procesarMensaje(RUDY, 'compras 120')
+    expect(p.botones!.map(b => b.titulo)).toEqual(['Guardar', 'Guardar y pagado', 'Cambiar persona'])
+    expect(p.texto).toContain('Rudy')                                       // ocasional: lo paga quien lo registra
+    const [elegir] = bot.procesarMensaje(RUDY, '', idDe(p, 'c'))
+    expect(elegir.botones!.map(b => b.titulo)).toEqual(['Cesar', 'Rudy', 'Ambos (por %)'])
+    const [otra] = bot.procesarMensaje(RUDY, '', elegir.botones![0].id)     // Cesar
+    expect(otra.texto).toMatch(/Le toca: \*Cesar\*/)
+    bot.procesarMensaje(RUDY, '', idDe(otra, 'gp'))
+    expect(pagoDe('Compras')).toMatchObject({ asignadoA: '1', pagado: true, tipo: 'ocasional' })
+    const [q] = bot.procesarMensaje(CESAR, '180 farmacia')
+    expect(q.texto).toContain('Farmacia')
+    expect(bot.procesarMensaje(CESAR, 'cancelar')[0].texto).toContain('descarté')
+    expect(bot.procesarMensaje(CESAR, '', idDe(q, 'g'))[0].texto).toContain('ya no está vigente')
+  })
+
   it('un botón no se puede usar dos veces', () => {
     const [p] = bot.procesarMensaje(RUDY, 'luz 190')
-    expect(p.texto).toContain('antes')
-    bot.procesarMensaje(RUDY, '', idDe(p, 'x'))
+    expect(p.texto).toContain('Reemplaza el monto')
+    bot.procesarMensaje(RUDY, 'cancelar')
     expect(bot.procesarMensaje(RUDY, '', idDe(p, 'g'))[0].texto).toContain('ya no está vigente')
     expect(pagoDe('Luz del Sur')!.monto).toBe(186)
   })
@@ -85,7 +101,7 @@ describe('bot de WhatsApp', () => {
   })
 
   it('resumen, pendientes y mensajes que no entiende', () => {
-    expect(bot.procesarMensaje(CESAR, 'resumen')[0].texto).toMatch(/Total: \*S\/\s?3,471\.00\*/)
+    expect(bot.procesarMensaje(CESAR, 'resumen')[0].texto).toMatch(/Total: \*S\/\s?3,591\.00\*/)
     expect(bot.procesarMensaje(CESAR, 'pendientes')[0].texto).toContain('Farmacia')
     expect(bot.procesarMensaje(CESAR, 'qué tal')[0].texto).toContain('No te entendí')
   })
