@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { Check, ChevronLeft, ChevronRight, Copy, X } from 'lucide-react'
-import type { Asignacion, Persona } from '@/types'
+import type { Asignacion, Persona, PersonaId } from '@/types'
 import type { EstadoVencimiento } from '@/lib/reparto'
 import { MESES } from '@/lib/reparto'
 import { CATEGORIAS } from '@/lib/categorias'
+import { Logo } from './Logo'
 
 export const inputCls =
   'w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/25'
@@ -17,7 +18,9 @@ export const btnSecundario =
 export function Encabezado({ titulo, children }: { titulo: string; children?: React.ReactNode }) {
   return (
     <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <h1 className="font-display text-[26px] font-bold leading-tight md:text-3xl">{titulo}</h1>
+      <h1 className="flex items-center gap-2.5 font-display text-[26px] font-bold leading-tight md:text-3xl">
+        <span className="md:hidden"><Logo size={30} /></span>{titulo}
+      </h1>
       {children}
     </header>
   )
@@ -40,6 +43,7 @@ export function Tarjeta({ className = '', children }: { className?: string; chil
 }
 
 export function Seccion({ titulo, extra, children }: { titulo: string; extra?: React.ReactNode; children: React.ReactNode }) {
+  // extra puede ser texto (gris) o un control
   return (
     <div className="grid gap-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 px-1">
@@ -226,4 +230,44 @@ export function NotaCopiable({ nota }: { nota: string }) {
   })
   if (desde < nota.length) partes.push(<span key="fin">{nota.slice(desde)}</span>)
   return <p className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-ink-2">{partes}</p>
+}
+
+/** Tinte sutil de la fila según a quién le toca (Ambos: sin tinte). */
+export function tintePersona(a: Asignacion | null | undefined) {
+  return a === '1' ? 'bg-p1/[0.07]' : a === '2' ? 'bg-p2/[0.08]' : ''
+}
+
+/** Nombre de quién paga con su color; "Tú" si es la persona que está usando la app. */
+export function EtiquetaPersona({ a, personas, yo }: { a: Asignacion; personas: [Persona, Persona]; yo?: PersonaId | null }) {
+  if (a === 'ambos') return <span className="font-semibold text-ink-3">Ambos</span>
+  const p = personas[a === '1' ? 0 : 1]
+  return (
+    <span className={`inline-flex items-center gap-1 font-semibold ${a === '1' ? 'text-p1' : 'text-p2'}`}>
+      <i className={`inline-block h-2 w-2 rounded-full ${a === '1' ? 'bg-p1' : 'bg-p2'}`} />
+      {a === yo ? 'Tú' : nombreCorto(p)}
+    </span>
+  )
+}
+
+/** Filtro "Todos / Míos": recuerda la elección en este navegador. */
+export function useSoloMios() {
+  const [solo, setSolo] = useState(false)
+  useEffect(() => { try { setSolo(localStorage.getItem('cuentas-claras:solo-mios') === '1') } catch { /* sin almacenamiento */ } }, [])
+  const cambiar = (v: boolean) => { setSolo(v); try { localStorage.setItem('cuentas-claras:solo-mios', v ? '1' : '0') } catch { /* nada */ } }
+  return [solo, cambiar] as const
+}
+
+export function FiltroMios({ solo, onCambio, persona }: { solo: boolean; onCambio: (v: boolean) => void; persona: Persona | null }) {
+  if (!persona) return null
+  const color = persona.id === '1' ? 'bg-p1' : 'bg-p2'
+  return (
+    <div role="radiogroup" aria-label="Qué gastos mostrar" className="inline-flex rounded-full bg-surface-2 p-0.5 text-xs font-semibold">
+      <button type="button" role="radio" aria-checked={!solo} onClick={() => onCambio(false)}
+        className={`rounded-full px-3 py-1 ${!solo ? 'bg-surface text-ink shadow-sm' : 'text-ink-3'}`}>Todos</button>
+      <button type="button" role="radio" aria-checked={solo} onClick={() => onCambio(true)}
+        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 ${solo ? 'bg-surface text-ink shadow-sm' : 'text-ink-3'}`}>
+        <i className={`h-2 w-2 rounded-full ${color}`} />Míos
+      </button>
+    </div>
+  )
 }

@@ -1,4 +1,3 @@
-import 'server-only'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
 /**
@@ -25,6 +24,48 @@ export function firmaValida(cuerpo: string, cabecera: string | null): boolean {
   return esperada.length === recibida.length && timingSafeEqual(esperada, recibida)
 }
 
+const destinoDe = (para: string) => (/^[A-Z]{2}\./.test(para) ? { recipient: para } : { to: para })
+
+async function llamar(cuerpo: object) {
+  const res = await fetch(`https://graph.facebook.com/${VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', ...cuerpo }),
+  })
+  if (!res.ok) throw new Error(`WhatsApp ${res.status}: ${(await res.text()).slice(0, 300)}`)
+}
+
+/**
+ * Mensaje que inicia el bot (fuera de una conversación): Meta exige una plantilla aprobada.
+ * Los parámetros no pueden tener saltos de línea.
+ */
+export async function enviarPlantilla(para: string, nombre: string, parametros: string[], idioma = 'es') {
+  await llamar({
+    ...destinoDe(para), type: 'template',
+    template: {
+      name: nombre, language: { code: idioma },
+      components: [{ type: 'body', parameters: parametros.map(t => ({ type: 'text', text: t.replace(/\s+/g, ' ').trim().slice(0, 900) })) }],
+    },
+  })
+}
+
+let cacheEstado: { nombre: string; estado: string; hasta: number } | null = null
+/** Estado de revisión de una plantilla en Meta (APPROVED, PENDING, REJECTED…). Se guarda 10 minutos. */
+export async function estadoPlantilla(nombre: string): Promise<string> {
+  if (cacheEstado && cacheEstado.nombre === nombre && cacheEstado.hasta > Date.now()) return cacheEstado.estado
+  const waba = process.env.WHATSAPP_WABA_ID
+  if (!waba || !process.env.WHATSAPP_TOKEN) return 'SIN_CONFIGURAR'
+  try {
+    const res = await fetch(`https://graph.facebook.com/${VERSION}/${waba}/message_templates?name=${encodeURIComponent(nombre)}&fields=name,status`, {
+      headers: { authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` },
+    })
+    const d = await res.json() as { data?: { name: string; status: string }[] }
+    const estado = d.data?.find(t => t.name === nombre)?.status ?? 'NO_EXISTE'
+    cacheEstado = { nombre, estado, hasta: Date.now() + 10 * 60 * 1000 }
+    return estado
+  } catch { return 'DESCONOCIDO' }
+}
+
 export async function enviar(para: string, r: Respuesta): Promise<void> {
   const cuerpo = r.botones?.length
     ? {
@@ -39,11 +80,5 @@ export async function enviar(para: string, r: Respuesta): Promise<void> {
     : { type: 'text', text: { body: r.texto.slice(0, 4096), preview_url: false } }
 
   // A quien Meta identifica solo por su ID de WhatsApp (BSUID, "PE.123…") se le escribe con "recipient"; al resto, con "to"
-  const destino = /^[A-Z]{2}\./.test(para) ? { recipient: para } : { to: para }
-  const res = await fetch(`https://graph.facebook.com/${VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', ...destino, ...cuerpo }),
-  })
-  if (!res.ok) throw new Error(`WhatsApp ${res.status}: ${(await res.text()).slice(0, 300)}`)
+  await llamar({ ...destinoDe(para), ...cuerpo })
 }

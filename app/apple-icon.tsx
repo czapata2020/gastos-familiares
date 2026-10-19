@@ -1,4 +1,5 @@
 import { ImageResponse } from 'next/og'
+import { LOGO_C, LOGO_CHECK, LOGO_FONDO, LOGO_MENTA } from '@/components/Logo'
 
 export const size = { width: 180, height: 180 }
 export const contentType = 'image/png'
@@ -6,9 +7,10 @@ export const contentType = 'image/png'
 export default function AppleIcon() {
   return new ImageResponse(
     (
-      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f6b5c' }}>
-        <svg width="120" height="120" viewBox="0 0 32 32">
-          <path d="M9 21.5V12a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v9.5M16 10v13.5M9 23.5h14" stroke="#fff" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: LOGO_FONDO }}>
+        <svg width="132" height="132" viewBox="0 0 32 32">
+          <path d={LOGO_C} fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+          <path d={LOGO_CHECK} fill="none" stroke={LOGO_MENTA} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
     ),

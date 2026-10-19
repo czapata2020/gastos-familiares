@@ -7,6 +7,7 @@ export type Intencion =
   | { tipo: 'pendientes' }
   | { tipo: 'pagar'; texto: string }
   | { tipo: 'registrar'; texto: string; monto: number; quien: Asignacion | 'yo' | null; pagado: boolean }
+  | { tipo: 'cancelar' }
   | { tipo: 'desconocido' }
 
 export const normalizar = (s: string) =>
@@ -38,27 +39,32 @@ export function interpretar(textoOriginal: string, nombres: [string, string]): I
   if (!texto) return { tipo: 'desconocido' }
 
   if (/^(ayuda|help|hola|menu|inicio|comandos)$/.test(texto)) return { tipo: 'ayuda' }
+  if (/^(cancelar|cancela|anular|no)$/.test(texto)) return { tipo: 'cancelar' }
   if (/^(resumen|total|como vamos|cuanto (llevamos|vamos|gastamos|va)( este mes)?)$/.test(texto)) return { tipo: 'resumen' }
   if (/^(pendientes?|que falta( pagar)?|por pagar|falta pagar)$/.test(texto)) return { tipo: 'pendientes' }
 
   const pago = /^(ya )?(pague|pagado|pagada|pagar|pago) (el |la |los |las )?(.+)$/.exec(texto)
   if (pago && !/\d/.test(pago[4])) return { tipo: 'pagar', texto: pago[4].trim() }
 
-  // Registrar: "<concepto> <monto> [persona|ambos|yo] [pagado]" en cualquier orden después del concepto
-  const tokens = texto.split(' ')
-  const iMonto = tokens.findIndex((t, i) => i > 0 && leerMonto(t) != null)
-  if (iMonto > 0) {
+  // Registrar: el monto puede ir antes o después del nombre ("luz 180", "180 luz", "s/ 180 luz rudy pagado").
+  // Las palabras de persona y "pagado" se reconocen en cualquier lugar; el resto es el nombre del gasto.
+  const tokens = texto.split(' ').filter(t => t !== 's/' && t !== 's/.')
+  const iMonto = tokens.findIndex(t => leerMonto(t) != null)
+  if (iMonto >= 0 && tokens.length > 1) {
     const monto = leerMonto(tokens[iMonto])!
-    const concepto = tokens.slice(0, iMonto).filter(t => t !== 's/' && t !== 's/.').join(' ')
     let quien: Asignacion | 'yo' | null = null
     let pagado = false
-    for (const t of tokens.slice(iMonto + 1)) {
+    const palabras: string[] = []
+    tokens.forEach((t, k) => {
+      if (k === iMonto) return
       if (PAGADO.has(t)) pagado = true
       else if (t === 'ambos') quien = 'ambos'
       else if (t === 'yo' || t === 'mio' || t === 'mia') quien = 'yo'
       else if (nombres[0] && t === nombres[0]) quien = '1'
       else if (nombres[1] && t === nombres[1]) quien = '2'
-    }
+      else palabras.push(t)
+    })
+    const concepto = palabras.join(' ')
     if (concepto) return { tipo: 'registrar', texto: concepto, monto, quien, pagado }
   }
   return { tipo: 'desconocido' }

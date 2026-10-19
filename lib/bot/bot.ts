@@ -19,6 +19,10 @@ interface Propuesta {
   asignadoA: Asignacion
   manual: boolean
   pagado: boolean
+  /** Monto que tenía el pago si ya estaba registrado (se reemplaza). */
+  montoAntes?: number | null
+  /** Gasto que no existía: se crea como ocasional nuevo. */
+  nuevo?: boolean
 }
 
 const VIGENCIA_HORAS = 24
@@ -66,6 +70,10 @@ export function procesarMensaje(waId: string, texto: string, boton?: string): Re
     case 'resumen': return [resumen(anio, mes, personas)]
     case 'pendientes': return [pendientes(anio, mes, personas)]
     case 'pagar': return [marcarPagado(intencion.texto, anio, mes)]
+    case 'cancelar': {
+      const n = getDb().prepare('DELETE FROM wa_pendientes WHERE wa_id = ?').run(waId).changes
+      return [{ texto: n ? 'Listo, descarté lo que estaba sin guardar.' : 'No había nada pendiente de guardar.' }]
+    }
     case 'registrar': {
       const quien = intencion.quien === 'yo' ? persona.id : intencion.quien
       return [proponer(waId, intencion.texto, intencion.monto, quien, intencion.pagado, anio, mes, personas, persona)]
@@ -97,23 +105,28 @@ function proponer(waId: string, escrito: string, monto: number, quien: Asignacio
     }
   }
 
+  p.montoAntes = fila?.pago?.monto ?? null
+  p.nuevo = p.tipo === 'ocasional' && !plantilla
   const id = uid('wa')
   getDb().prepare('INSERT INTO wa_pendientes (id, wa_id, datos) VALUES (?, ?, ?)').run(id, waId, JSON.stringify(p))
+  return textoPropuesta(id, p, personas, estado.config.monedaBase)
+}
 
-  const mon = estado.config.monedaBase
-  const antes = fila?.pago ? ` (antes ${dinero(fila.pago.monto, mon)})` : ''
-  const como = p.tipo === 'ocasional' ? 'ocasional' : p.manual ? 'elegido por ti' : 'automático'
+function textoPropuesta(id: string, p: Propuesta, personas: [Persona, Persona], mon: string): Respuesta {
+  const como = p.tipo === 'ocasional' ? 'gasto ocasional' : p.manual ? 'elegido por ti' : 'automático'
   const lineas = [
-    `*${p.nombre}* · ${dinero(monto, mon)}${antes}`,
-    `${MESES[mes - 1]} ${anio}${p.tipo === 'ocasional' && !plantilla ? ' · gasto nuevo' : ''}`,
+    `*${p.nombre}* · ${dinero(p.monto, mon)}`,
+    p.montoAntes != null
+      ? `Reemplaza el monto de ${MESES[p.mes - 1].toLowerCase()}: ${dinero(p.montoAntes, mon)} → ${dinero(p.monto, mon)}`
+      : `${MESES[p.mes - 1]} ${p.anio}${p.nuevo ? ' · gasto nuevo' : ''}`,
     `Le toca: *${quienTxt(p.asignadoA, personas)}* (${como})`,
     p.pagado ? 'Se marcará como *pagado*.' : '',
     '',
-    '¿Lo guardo?',
-  ].filter((l, i, arr) => l !== '' || arr[i - 1] !== '')
+    '¿Lo guardo? Escribe *cancelar* para descartarlo.',
+  ].filter((l, k, arr) => l !== '' || arr[k - 1] !== '')
   const botones = p.pagado
-    ? [{ id: `g:${id}`, titulo: 'Guardar' }, { id: `x:${id}`, titulo: 'Cancelar' }]
-    : [{ id: `g:${id}`, titulo: 'Guardar' }, { id: `gp:${id}`, titulo: 'Guardar y pagado' }, { id: `x:${id}`, titulo: 'Cancelar' }]
+    ? [{ id: `g:${id}`, titulo: 'Guardar' }, { id: `c:${id}`, titulo: 'Cambiar persona' }, { id: `x:${id}`, titulo: 'Cancelar' }]
+    : [{ id: `g:${id}`, titulo: 'Guardar' }, { id: `gp:${id}`, titulo: 'Guardar y pagado' }, { id: `c:${id}`, titulo: 'Cambiar persona' }]
   return { texto: lineas.join('\n'), botones }
 }
 
@@ -122,11 +135,31 @@ function aplicarBoton(waId: string, boton: string, personas: [Persona, Persona])
   const fila = getDb().prepare(
     `SELECT datos FROM wa_pendientes WHERE id = ? AND wa_id = ? AND creado_en > datetime('now', '-${VIGENCIA_HORAS} hours')`,
   ).get(id, waId) as { datos: string } | undefined
-  getDb().prepare('DELETE FROM wa_pendientes WHERE id = ?').run(id)
   if (!fila) return { texto: 'Esa propuesta ya no está vigente. Envíame el gasto de nuevo.' }
+  const p = JSON.parse(fila.datos) as Propuesta
+  const mon = getEstadoMes(p.anio, p.mes).config.monedaBase
+
+  // Cambiar persona: se elige y se vuelve a mostrar la propuesta (sigue sin guardarse)
+  if (accion === 'c') {
+    return {
+      texto: `¿A quién le toca *${p.nombre}* (${dinero(p.monto, mon)})?`,
+      botones: [
+        { id: `q1:${id}`, titulo: corto(personas[0]) },
+        { id: `q2:${id}`, titulo: corto(personas[1]) },
+        { id: `qa:${id}`, titulo: 'Ambos (por %)' },
+      ],
+    }
+  }
+  if (accion === 'q1' || accion === 'q2' || accion === 'qa') {
+    p.asignadoA = accion === 'q1' ? '1' : accion === 'q2' ? '2' : 'ambos'
+    p.manual = true
+    getDb().prepare('UPDATE wa_pendientes SET datos = ? WHERE id = ?').run(JSON.stringify(p), id)
+    return textoPropuesta(id, p, personas, mon)
+  }
+
+  getDb().prepare('DELETE FROM wa_pendientes WHERE id = ?').run(id)
   if (accion === 'x') return { texto: 'Listo, no guardé nada.' }
 
-  const p = JSON.parse(fila.datos) as Propuesta
   const pagado = p.pagado || accion === 'gp'
   let pagoId = p.pagoId
   if (pagoId) {
@@ -141,7 +174,6 @@ function aplicarBoton(waId: string, boton: string, personas: [Persona, Persona])
   // La asignación automática puede haber reacomodado el mes: informamos lo que quedó guardado
   const estado = getEstadoMes(p.anio, p.mes)
   const guardado = estado.filas.find(f => f.pago?.id === pagoId)?.pago
-  const mon = estado.config.monedaBase
   const total = estado.filas.reduce((s, f) => s + (f.pago?.monto ?? 0), 0)
   return {
     texto: [

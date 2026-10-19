@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 
+import { Marca } from '@/components/Logo'
+
 export const metadata: Metadata = { title: 'Política de privacidad · Cuentas Claras' }
 
 const ACTUALIZADO = '16 de octubre de 2026'
@@ -10,7 +12,7 @@ export default function Privacidad() {
   return (
     <article className="mx-auto grid max-w-2xl gap-5 py-6 text-[15px] leading-relaxed text-ink-2">
       <header className="grid gap-1">
-        <p className="text-xs font-bold uppercase tracking-wider text-accent">Cuentas Claras</p>
+        <Marca size={40} />
         <h1 className="font-display text-3xl font-bold text-ink">Política de privacidad</h1>
         <p className="text-sm text-ink-3">Última actualización: {ACTUALIZADO}</p>
       </header>
