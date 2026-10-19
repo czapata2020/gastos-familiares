@@ -117,16 +117,19 @@ function textoPropuesta(id: string, p: Propuesta, personas: [Persona, Persona], 
   const lineas = [
     `*${p.nombre}* · ${dinero(p.monto, mon)}`,
     p.montoAntes != null
-      ? `Reemplaza el monto de ${MESES[p.mes - 1].toLowerCase()}: ${dinero(p.montoAntes, mon)} → ${dinero(p.monto, mon)}`
+      ? `Ya tiene ${dinero(p.montoAntes, mon)} en ${MESES[p.mes - 1].toLowerCase()}. *Sumar* deja ${dinero(p.montoAntes + p.monto, mon)}; *Reemplazar* deja ${dinero(p.monto, mon)}.`
       : `${MESES[p.mes - 1]} ${p.anio}${p.nuevo ? ' · gasto nuevo' : ''}`,
     `Le toca: *${quienTxt(p.asignadoA, personas)}* (${como})`,
     p.pagado ? 'Se marcará como *pagado*.' : '',
     '',
-    '¿Lo guardo? Escribe *cancelar* para descartarlo.',
+    p.montoAntes != null ? 'Escribe *cancelar* para descartarlo.' : '¿Lo guardo? Escribe *cancelar* para descartarlo.',
   ].filter((l, k, arr) => l !== '' || arr[k - 1] !== '')
-  const botones = p.pagado
-    ? [{ id: `g:${id}`, titulo: 'Guardar' }, { id: `c:${id}`, titulo: 'Cambiar persona' }, { id: `x:${id}`, titulo: 'Cancelar' }]
-    : [{ id: `g:${id}`, titulo: 'Guardar' }, { id: `gp:${id}`, titulo: 'Guardar y pagado' }, { id: `c:${id}`, titulo: 'Cambiar persona' }]
+  // Si el gasto ya tiene monto este mes: sumar (compras por partes) o reemplazar
+  const botones = p.montoAntes != null
+    ? [{ id: `s:${id}`, titulo: 'Sumar al mes' }, { id: `g:${id}`, titulo: 'Reemplazar' }, { id: `c:${id}`, titulo: 'Cambiar persona' }]
+    : p.pagado
+      ? [{ id: `g:${id}`, titulo: 'Guardar' }, { id: `c:${id}`, titulo: 'Cambiar persona' }, { id: `x:${id}`, titulo: 'Cancelar' }]
+      : [{ id: `g:${id}`, titulo: 'Guardar' }, { id: `gp:${id}`, titulo: 'Guardar y pagado' }, { id: `c:${id}`, titulo: 'Cambiar persona' }]
   return { texto: lineas.join('\n'), botones }
 }
 
@@ -162,6 +165,11 @@ function aplicarBoton(waId: string, boton: string, personas: [Persona, Persona])
 
   const pagado = p.pagado || accion === 'gp'
   let pagoId = p.pagoId
+  // "Sumar al mes": se suma al monto que tenga en este momento (por si cambió desde la propuesta)
+  if (accion === 's' && pagoId) {
+    const actual = getDb().prepare('SELECT monto FROM pagos WHERE id = ?').get(pagoId) as { monto: number } | undefined
+    p.monto = Math.round(((actual?.monto ?? 0) + p.monto) * 100) / 100
+  }
   if (pagoId) {
     actualizarPago(pagoId, { monto: p.monto, ...(p.manual && { asignadoA: p.asignadoA }), ...(pagado && { pagado: true }) })
   } else {

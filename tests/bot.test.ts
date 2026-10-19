@@ -59,9 +59,22 @@ describe('bot de WhatsApp', () => {
     expect(bot.procesarMensaje(CESAR, '', idDe(q, 'g'))[0].texto).toContain('ya no está vigente')
   })
 
+  it('compras por partes: "Sumar al mes" acumula sobre lo ya registrado', () => {
+    const antes = pagoDe('Luz del Sur')!.monto
+    const [p] = bot.procesarMensaje(RUDY, '50 luz')
+    expect(p.texto).toContain('Sumar')
+    const [ok] = bot.procesarMensaje(RUDY, '', idDe(p, 's'))
+    expect(ok.texto).toContain('Guardado')
+    expect(pagoDe('Luz del Sur')!.monto).toBe(antes + 50)
+    const [q] = bot.procesarMensaje(RUDY, 'luz 186')
+    bot.procesarMensaje(RUDY, '', idDe(q, 'g'))                 // Reemplazar
+    expect(pagoDe('Luz del Sur')!.monto).toBe(186)
+  })
+
   it('un botón no se puede usar dos veces', () => {
     const [p] = bot.procesarMensaje(RUDY, 'luz 190')
-    expect(p.texto).toContain('Reemplaza el monto')
+    expect(p.texto).toContain('Ya tiene')
+    expect(p.botones!.map(b => b.titulo)).toEqual(['Sumar al mes', 'Reemplazar', 'Cambiar persona'])
     bot.procesarMensaje(RUDY, 'cancelar')
     expect(bot.procesarMensaje(RUDY, '', idDe(p, 'g'))[0].texto).toContain('ya no está vigente')
     expect(pagoDe('Luz del Sur')!.monto).toBe(186)
