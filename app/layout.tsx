@@ -11,6 +11,12 @@ export const metadata: Metadata = {
   title: 'Cuentas Claras',
   description: 'Los gastos del hogar, repartidos según el ingreso de cada uno',
   appleWebApp: { capable: true, title: 'Cuentas Claras', statusBarStyle: 'default' },
+  // Íconos y manifiesto en /publico: el celular los pide sin sesión, así que no pueden pasar por Cloudflare Access
+  manifest: '/publico/manifest.webmanifest',
+  icons: {
+    icon: [{ url: '/publico/icono?tam=32', sizes: '32x32', type: 'image/png' }, { url: '/publico/icono?tam=192', sizes: '192x192', type: 'image/png' }],
+    apple: [{ url: '/publico/icono?tam=180', sizes: '180x180', type: 'image/png' }],
+  },
 }
 
 export const viewport: Viewport = {
