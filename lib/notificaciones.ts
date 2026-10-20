@@ -9,7 +9,7 @@ import { enviarPlantilla, estadoPlantilla, whatsappConfigurado } from './whatsap
  * Recordatorios de vencimiento, una vez al día:
  *  - WhatsApp: a cada persona, solo lo que le toca pagar (vence en 3 días, vence hoy, venció ayer).
  *    Usa la plantilla aprobada por Meta "recordatorio_pagos" (los mensajes que inicia el bot la exigen).
- *  - Correo (opcional): a la casa, 3 días antes y el día siguiente al vencimiento. SMTP_* en el servidor.
+ *  - Correo: también a cada persona lo suyo, con las mismas reglas. SMTP_* en el servidor.
  * Cada aviso se envía una sola vez (tabla avisos_enviados).
  */
 
@@ -73,8 +73,8 @@ function html(titulo: string, avisos: Aviso[]) {
 }
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
-async function enviarCorreo(asunto: string, titulo: string, avisos: Aviso[]) {
-  const to = destinatariosCorreo()
+async function enviarCorreo(asunto: string, titulo: string, avisos: Aviso[], para?: string[]) {
+  const to = para ?? destinatariosCorreo()
   if (!to.length) throw new Error('No hay correos en Ajustes → Hogar')
   await transporte().sendMail({
     from: `"Cuentas Claras" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
@@ -147,14 +147,32 @@ export async function revisarVencimientos(hoy = new Date()): Promise<{ whatsapp:
     }
   }
 
-  // Correo: a la casa, como antes (3 días antes y el día siguiente)
+  // Correo: igual que WhatsApp, a cada persona solo lo suyo (3 días antes, el día y el día siguiente)
   if (leerConfig('notif_activas') === '1' && smtpConfigurado()) {
-    const nuevos = items.filter(i => i.tipo !== 'hoy' && !yaEnviado.get(`${i.tipo}:${i.fila.concepto?.id}:${anio}-${mes}`))
-    const proximos = nuevos.filter(i => i.tipo === '3dias').map(i => ({ nombre: i.fila.nombre, detalle: `vence el ${i.fila.diaVencimiento}` }))
-    const vencidos = nuevos.filter(i => i.tipo === 'vencido').map(i => ({ nombre: i.fila.nombre, detalle: `venció el ${i.fila.diaVencimiento}` }))
-    if (proximos.length) { await enviarCorreo(`${proximos.length} pago(s) vencen en 3 días`, `Por vencer en ${MESES[mes - 1].toLowerCase()}`, proximos); enviados.correo++ }
-    if (vencidos.length) { await enviarCorreo(`${vencidos.length} pago(s) vencieron ayer`, 'Pagos vencidos sin marcar', vencidos); enviados.correo++ }
-    for (const i of nuevos) marcar.run(`${i.tipo}:${i.fila.concepto?.id}:${anio}-${mes}`)
+    const claveMail = (i: { tipo: Tipo; fila: FilaMes }, p: PersonaId) => `mail:${i.tipo}:${i.fila.concepto?.id ?? i.fila.key}:${anio}-${mes}:${p}`
+    for (const p of getPersonas()) {
+      if (!p.email.includes('@')) continue
+      const suyos = items.filter(i => i.quien.includes(p.id) && !yaEnviado.get(claveMail(i, p.id)))
+      if (!suyos.length) continue
+      const orden: Record<Tipo, number> = { vencido: 0, hoy: 1, '3dias': 2 }
+      suyos.sort((a, b) => orden[a.tipo] - orden[b.tipo])
+      const avisos = suyos.map(i => ({
+        nombre: i.fila.nombre,
+        detalle: `${i.monto != null ? `${dinero(i.monto, moneda)} · ` : ''}${detalle(i.tipo, i.fila.diaVencimiento!)}`,
+      }))
+      const total = suyos.reduce((s, i) => s + (i.monto ?? 0), 0)
+      const vencidos = suyos.filter(i => i.tipo === 'vencido').length
+      const asunto = vencidos
+        ? `${vencidos} pago(s) vencido(s) sin marcar · Cuentas Claras`
+        : `${suyos.length} pago(s) por vencer · ${dinero(total, moneda)}`
+      try {
+        await enviarCorreo(asunto, `${p.nombre.split(' ')[0]}, te toca pagar en ${MESES[mes - 1].toLowerCase()}`, avisos, [p.email])
+        for (const i of suyos) marcar.run(claveMail(i, p.id))
+        enviados.correo++
+      } catch (err) {
+        console.error('[recordatorios] correo a', p.nombre, err)
+      }
+    }
   }
   return enviados
 }

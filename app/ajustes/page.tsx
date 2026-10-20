@@ -502,7 +502,7 @@ function SeccionNotificaciones({ aviso }: { aviso: (m: string, e?: boolean) => v
         <div className="flex items-center justify-between gap-4 border-t border-line pt-3">
           <div className="min-w-0">
             <p className="font-semibold">Por correo</p>
-            <p className="text-ink-3">A {data.destinatarios.join(', ') || 'nadie (agrega correos en Hogar)'}: 3 días antes y el día siguiente.</p>
+            <p className="text-ink-3">Todos los días a las 8:00, a cada uno en su correo solo lo que le toca: lo que vence en 3 días, hoy, o venció ayer sin pagar. Sin costo.</p>
           </div>
           <Interruptor on={data.activas} etiqueta="Recordatorios por correo"
             onClick={() => cambiar({ activas: !data.activas }, data.activas ? 'Correos desactivados' : 'Correos activados')} />
