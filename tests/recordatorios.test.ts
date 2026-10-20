@@ -62,3 +62,25 @@ describe('recordatorios por WhatsApp', () => {
     expect((await notif.revisarVencimientos(otroDia)).whatsapp).toBe(0)
   })
 })
+
+describe('recordatorios por correo', () => {
+  it('a cada persona en su correo solo lo suyo, sin repetir', async () => {
+    const correos: { to: string; subject: string; html: string }[] = []
+    vi.doMock('nodemailer', () => ({ default: { createTransport: () => ({ sendMail: async (m: { to: string; subject: string; html: string }) => { correos.push(m) } }) } }))
+    vi.resetModules()
+    process.env.SMTP_HOST = 'smtp.ejemplo.com'; process.env.SMTP_USER = 'bot@ejemplo.com'; process.env.SMTP_PASS = 'x'
+    const repo2 = await import('@/lib/repo')
+    const notif2 = await import('@/lib/notificaciones')
+    repo2.setPersona({ id: '1', nombre: 'Cesar Z.', email: 'cesar@ejemplo.com', telefono: '51900000001' })
+    repo2.setPersona({ id: '2', nombre: 'Rudy P.', email: 'rudy@ejemplo.com', telefono: '' })
+    notif2.activarWhatsApp(false)
+    notif2.activarNotificaciones(true)
+    expect(await notif2.revisarVencimientos(HOY)).toEqual({ whatsapp: 0, correo: 2 })
+    const aRudy = correos.find(c => c.to === 'rudy@ejemplo.com')!
+    expect(aRudy.html).toContain('Luz Pluz')
+    expect(aRudy.html).toContain('vence hoy')
+    expect(aRudy.html).not.toContain('Hipoteca')
+    expect(correos.find(c => c.to === 'cesar@ejemplo.com')!.html).toContain('Hipoteca')
+    expect((await notif2.revisarVencimientos(HOY)).correo).toBe(0)
+  })
+})
